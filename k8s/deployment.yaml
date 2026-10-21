@@ -150,6 +150,13 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+          # The app waits up to ~60 s for the database before listening;
+          # liveness checks start only after the startup probe succeeds.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+            failureThreshold: 45
           readinessProbe:
             httpGet:
               path: /health
@@ -158,7 +165,6 @@ spec:
           livenessProbe:
             tcpSocket:
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 10
           volumeMounts:
             - name: tmp

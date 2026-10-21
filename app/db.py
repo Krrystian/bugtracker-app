@@ -2,7 +2,7 @@ import logging
 import time
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -27,12 +27,25 @@ engine = _make_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+# Arbitrary key for the PostgreSQL advisory lock guarding schema creation.
+_SCHEMA_LOCK_ID = 7_314_202_601
+
+
+def _create_schema() -> None:
+    with engine.begin() as conn:
+        if conn.dialect.name == "postgresql":
+            # Several replicas may start at once on an empty database; serialize
+            # CREATE TYPE/TABLE so they don't race. Released at transaction end.
+            conn.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": _SCHEMA_LOCK_ID})
+        Base.metadata.create_all(conn)
+
+
 def init_db(attempts: int = 30, delay: float = 2.0) -> None:
     """Create tables, waiting for the database to come up (e.g. in Kubernetes)."""
     log = logging.getLogger("uvicorn.error")
     for attempt in range(1, attempts + 1):
         try:
-            Base.metadata.create_all(engine)
+            _create_schema()
             return
         except OperationalError:
             if attempt == attempts:
