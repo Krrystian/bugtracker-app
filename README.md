@@ -3,7 +3,22 @@
 Prosty bugtracker (FastAPI + PostgreSQL) — aplikacja do projektu „Bezpieczny potok GitOps (DevSecOps)”.
 Gałąź `main` to wersja secure. Podatne warianty żyją wyłącznie na gałęziach `vuln/*`.
 
-## Uruchomienie lokalne
+## Uruchomienie w Dockerze (zalecane)
+
+Wymaga Docker Desktop i pliku `.env` (skopiuj z `.env.example`, uzupełnij `DB_PASSWORD` i `SECRET_KEY`).
+
+```bash
+docker compose up -d --build   # build obrazu + start aplikacji i PostgreSQL
+docker compose ps              # oba kontenery powinny być "healthy"
+open http://localhost:8000     # interfejs webowy
+docker compose logs -f app     # logi aplikacji
+docker compose down            # stop (dane zostają w wolumenie db-data)
+docker compose down -v         # stop + usunięcie danych
+```
+
+Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
+
+## Uruchomienie lokalne (bez Dockera)
 
 ```bash
 brew install postgresql@16 && brew services start postgresql@16

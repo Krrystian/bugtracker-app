@@ -1,0 +1,50 @@
+# Local run: app + PostgreSQL in one private network.
+# Secrets come from the local .env file (not committed); see .env.example.
+name: bugtracker
+
+services:
+  db:
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_DB: ${DB_NAME:-bugtracker}
+      POSTGRES_USER: ${DB_USER:-bugtracker}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+    # No published port: the database is reachable only from the app container.
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: bugtracker:local
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-bugtracker}
+      DB_USER: ${DB_USER:-bugtracker}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
+      ENABLE_DOCS: ${ENABLE_DOCS:-false}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [backend]
+    restart: unless-stopped
+
+volumes:
+  db-data:
+
+networks:
+  backend:
