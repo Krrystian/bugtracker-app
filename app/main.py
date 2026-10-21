@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import bugs, web
 from app.config import get_settings
-from app.db import Base, engine, get_db
+from app.db import get_db, init_db
 from app.models import Bug, User
 from app.schemas import BugCreate, BugOut, BugUpdate, Token, UserCreate, UserOut
 from app.security import (
@@ -25,7 +25,7 @@ from app.security import (
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(engine)
+    init_db()
     yield
 
 

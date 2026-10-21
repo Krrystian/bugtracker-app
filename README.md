@@ -18,6 +18,32 @@ docker compose down -v         # stop + usunięcie danych
 
 Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
+## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)
+
+Wymaga włączonego Kubernetes w Docker Desktop (kontekst `docker-desktop`) i kontrolera Ingress Traefik.
+
+```bash
+# 1. Kontroler Ingress (jednorazowo)
+helm repo add traefik https://traefik.github.io/charts
+helm install traefik traefik/traefik --version 41.6.1 -n traefik --create-namespace --set service.type=LoadBalancer
+
+# 2. Obraz: klaster Docker Desktop (kind) nie widzi lokalnych obrazów, trzeba go załadować do węzła
+docker build -t bugtracker:local .
+docker save bugtracker:local | docker exec -i desktop-control-plane ctr -n k8s.io images import --all-platforms -
+
+# 3. Namespace + sekret (tworzony ręcznie z .env, NIE trafia do repo)
+kubectl apply -f k8s/namespace.yaml
+( set -a; . ./.env; set +a; kubectl -n bugtracker create secret generic bugtracker-secrets \
+    --from-literal=db-password="$DB_PASSWORD" --from-literal=secret-key="$SECRET_KEY" )
+
+# 4. Wdrożenie
+kubectl apply -f k8s/
+kubectl -n bugtracker get pods
+open http://localhost
+```
+
+Manifesty: namespace z Pod Security `restricted`, PostgreSQL (UID 70) z PVC, aplikacja w 2 replikach (UID 10001), oba kontenery z read-only FS, `drop: ALL`, limitami i sondami zdrowia.
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash

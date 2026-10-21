@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: bugtracker
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: bugtracker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bugtracker
+  namespace: bugtracker
+  labels:
+    app.kubernetes.io/name: bugtracker
+    app.kubernetes.io/part-of: bugtracker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: bugtracker
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

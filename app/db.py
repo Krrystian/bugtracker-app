@@ -1,6 +1,9 @@
+import logging
+import time
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -22,6 +25,20 @@ def _make_engine():
 
 engine = _make_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def init_db(attempts: int = 30, delay: float = 2.0) -> None:
+    """Create tables, waiting for the database to come up (e.g. in Kubernetes)."""
+    log = logging.getLogger("uvicorn.error")
+    for attempt in range(1, attempts + 1):
+        try:
+            Base.metadata.create_all(engine)
+            return
+        except OperationalError:
+            if attempt == attempts:
+                raise
+            log.warning("Database not ready (attempt %d/%d), retrying in %.0fs", attempt, attempts, delay)
+            time.sleep(delay)
 
 
 def get_db() -> Iterator[Session]:
