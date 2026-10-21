@@ -44,6 +44,29 @@ open http://localhost
 
 Manifesty: namespace z Pod Security `restricted`, PostgreSQL (UID 70) z PVC, aplikacja w 2 replikach (UID 10001), oba kontenery z read-only FS, `drop: ALL`, limitami i sondami zdrowia.
 
+## Klaster k3d (etap 5)
+
+k3d uruchamia lekki Kubernetes (k3s) w kontenerach Dockera; Traefik jest wbudowany. Obraz pobierany jest z Docker Hub (tag = SHA commita z `main`).
+
+```bash
+brew install k3d
+k3d cluster create bugtracker --port "80:80@loadbalancer"   # port 80 musi być wolny
+
+kubectl apply -f k8s/namespace.yaml
+( set -a; . ./.env; set +a; kubectl -n bugtracker create secret generic bugtracker-secrets \
+    --from-literal=db-password="$DB_PASSWORD" --from-literal=secret-key="$SECRET_KEY" )
+kubectl apply -f k8s/pvc.yaml -f k8s/service.yaml -f k8s/ingress.yaml
+
+# deployment.yaml wskazuje lokalny obraz (etap 3) — podmieniamy na obraz z Docker Hub
+SHA=$(git rev-parse origin/main)
+sed -e "s#image: bugtracker:local#image: krys3x15/bugtracker:$SHA#" \
+    -e "s#imagePullPolicy: Never#imagePullPolicy: IfNotPresent#" k8s/deployment.yaml | kubectl apply -f -
+
+curl http://localhost/health
+```
+
+Od etapu 6 tę podmianę zastępuje wykres Helm (`image.tag` w values).
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash
