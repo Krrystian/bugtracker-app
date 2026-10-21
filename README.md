@@ -15,6 +15,12 @@ curl localhost:8000/health
 
 Testy: `.venv/bin/pytest -q` (SQLite w pamięci, nie wymagają bazy).
 
+## Interfejs webowy
+
+Po uruchomieniu otwórz **http://localhost:8000** (przekierowuje na `/ui`): rejestracja, logowanie, lista zgłoszeń z filtrem statusu, dodawanie, edycja i usuwanie (tylko własnych zgłoszeń).
+
+Strony renderuje serwer (Jinja2), bez JavaScriptu.
+
 ## API
 
 | Metoda | Ścieżka | Auth | Opis |
@@ -27,12 +33,13 @@ Testy: `.venv/bin/pytest -q` (SQLite w pamięci, nie wymagają bazy).
 
 ## Konfiguracja (zmienne środowiskowe)
 
-`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki), opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`).
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki), opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`) i `COOKIE_SECURE=true` (gdy aplikacja działa po HTTPS).
 
 ## Zabezpieczenia w wersji secure
 
 - zapytania wyłącznie przez ORM SQLAlchemy (parametryzowane),
 - hasła hashowane Argon2id, porównanie odporne na timing przy nieistniejącym użytkowniku,
 - JWT z wymaganym `exp`, autoryzacja właściciela przy edycji/usuwaniu,
-- walidacja wejścia (Pydantic), odpowiedzi tylko JSON, nagłówki bezpieczeństwa (CSP, `nosniff`, `X-Frame-Options`),
+- walidacja wejścia (Pydantic), nagłówki bezpieczeństwa (ścisłe CSP bez inline/JS, `nosniff`, `X-Frame-Options`),
+- frontend: automatyczne escapowanie HTML w Jinja2 (ochrona przed XSS), sesja w ciasteczku `HttpOnly` + `SameSite=Strict`, token CSRF w każdym formularzu,
 - brak sekretów w kodzie — wszystko ze zmiennych środowiskowych.

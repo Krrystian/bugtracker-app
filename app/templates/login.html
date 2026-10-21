@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Logowanie{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Logowanie</h1>
+  <form method="post" action="/ui/login" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>E-mail <input type="email" name="email" value="{{ email or '' }}" required autocomplete="username"></label>
+    <label>Hasło <input type="password" name="password" required autocomplete="current-password"></label>
+    <button class="btn btn-primary" type="submit">Zaloguj</button>
+  </form>
+  <p class="muted">Nie masz konta? <a href="/ui/register">Zarejestruj się</a></p>
+</section>
+{% endblock %}

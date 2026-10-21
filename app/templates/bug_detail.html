@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}#{{ bug.id }} {{ bug.title }}{% endblock %}
+{% block content %}
+<p><a href="/ui">← Wróć do listy</a></p>
+<article class="card">
+  <h1>#{{ bug.id }} {{ bug.title }}</h1>
+  <p>
+    <span class="badge status-{{ bug.status.value }}">{{ bug.status.value }}</span>
+    <span class="badge prio-{{ bug.priority.value }}">{{ bug.priority.value }}</span>
+    <span class="muted">zgłosił(a) {{ bug.reporter.email }}, {{ bug.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+  </p>
+  <div class="description">{{ bug.description or 'Brak opisu.' }}</div>
+  {% if bug.reporter_id == user.id %}
+  <div class="actions">
+    <a class="btn" href="/ui/bugs/{{ bug.id }}/edit">Edytuj</a>
+    <form method="post" action="/ui/bugs/{{ bug.id }}/delete" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger" type="submit">Usuń</button>
+    </form>
+  </div>
+  {% endif %}
+</article>
+{% endblock %}

@@ -1,11 +1,16 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import bugs, web
 from app.config import get_settings
 from app.db import Base, engine, get_db
 from app.models import Bug, User
@@ -32,6 +37,8 @@ app = FastAPI(
     redoc_url=None,
     openapi_url="/openapi.json" if _docs else None,
 )
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+app.include_router(web.router)
 
 
 @app.middleware("http")
@@ -40,12 +47,26 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Cache-Control"] = "no-store"
+    if not request.url.path.startswith("/static"):
+        response.headers["Cache-Control"] = "no-store"
     if not request.url.path.startswith(("/docs", "/openapi.json")):
         response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; frame-ancestors 'none'"
+            "default-src 'none'; style-src 'self'; form-action 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'"
         )
     return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    if request.url.path.startswith("/ui"):
+        return web.render_error(request, exc.status_code, exc.detail)
+    return await http_exception_handler(request, exc)
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/ui", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/health")
@@ -86,18 +107,6 @@ def login(data: UserCreate, db: Session = Depends(get_db)):
 # --- Bugs (CRUD) ----------------------------------------------------------
 
 
-def _get_bug(bug_id: int, db: Session) -> Bug:
-    bug = db.get(Bug, bug_id)
-    if bug is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bug not found")
-    return bug
-
-
-def _require_owner(bug: Bug, user: User) -> None:
-    if bug.reporter_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the reporter can modify this bug")
-
-
 @app.get("/bugs", response_model=list[BugOut])
 def list_bugs(
     limit: int = 50,
@@ -105,9 +114,7 @@ def list_bugs(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    limit = max(1, min(limit, 100))
-    stmt = select(Bug).order_by(Bug.id).limit(limit).offset(max(0, offset))
-    return db.scalars(stmt).all()
+    return bugs.list_bugs(db, limit, offset)
 
 
 @app.post("/bugs", response_model=BugOut, status_code=status.HTTP_201_CREATED)
@@ -127,7 +134,7 @@ def create_bug(
 def get_bug(
     bug_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)
 ):
-    return _get_bug(bug_id, db)
+    return bugs.get_bug_or_404(bug_id, db)
 
 
 @app.patch("/bugs/{bug_id}", response_model=BugOut)
@@ -137,8 +144,8 @@ def update_bug(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    bug = _get_bug(bug_id, db)
-    _require_owner(bug, user)
+    bug = bugs.get_bug_or_404(bug_id, db)
+    bugs.require_owner(bug, user)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(bug, field, value)
     db.commit()
@@ -152,7 +159,7 @@ def delete_bug(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    bug = _get_bug(bug_id, db)
-    _require_owner(bug, user)
+    bug = bugs.get_bug_or_404(bug_id, db)
+    bugs.require_owner(bug, user)
     db.delete(bug)
     db.commit()

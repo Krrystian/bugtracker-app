@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Zgłoszenia{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>Zgłoszenia</h1>
+  <nav class="filters">
+    <a href="/ui" class="{{ 'active' if not status_filter }}">Wszystkie</a>
+    {% for s in statuses %}
+      <a href="/ui?status_filter={{ s.value }}" class="{{ 'active' if status_filter == s }}">{{ s.value }}</a>
+    {% endfor %}
+  </nav>
+</div>
+{% if bugs %}
+<table class="table">
+  <thead><tr><th>#</th><th>Tytuł</th><th>Status</th><th>Priorytet</th><th>Zgłaszający</th><th>Utworzono</th></tr></thead>
+  <tbody>
+  {% for b in bugs %}
+    <tr>
+      <td>{{ b.id }}</td>
+      <td><a href="/ui/bugs/{{ b.id }}">{{ b.title }}</a></td>
+      <td><span class="badge status-{{ b.status.value }}">{{ b.status.value }}</span></td>
+      <td><span class="badge prio-{{ b.priority.value }}">{{ b.priority.value }}</span></td>
+      <td class="muted">{{ b.reporter.email }}</td>
+      <td class="muted">{{ b.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="card muted">Brak zgłoszeń. <a href="/ui/bugs/new">Dodaj pierwsze</a>.</p>
+{% endif %}
+{% endblock %}

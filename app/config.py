@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
+    # Set to true when the app is served over HTTPS.
+    cookie_secure: bool = False
 
     enable_docs: bool = False
 

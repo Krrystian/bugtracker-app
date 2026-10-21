@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Bugtracker{% endblock %} · Bugtracker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/ui">🐞 Bugtracker</a>
+    {% if user %}
+      <nav>
+        <a href="/ui/bugs/new" class="btn btn-primary">+ Nowe zgłoszenie</a>
+        <span class="muted">{{ user.email }}</span>
+        <form method="post" action="/ui/logout" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-link" type="submit">Wyloguj</button>
+        </form>
+      </nav>
+    {% endif %}
+  </header>
+  <main class="container">
+    {% if errors %}
+      <div class="alert" role="alert">
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Rejestracja{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Rejestracja</h1>
+  <form method="post" action="/ui/register" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>E-mail <input type="email" name="email" value="{{ email or '' }}" required autocomplete="username"></label>
+    <label>Hasło (min. 12 znaków) <input type="password" name="password" minlength="12" maxlength="128" required autocomplete="new-password"></label>
+    <button class="btn btn-primary" type="submit">Utwórz konto</button>
+  </form>
+  <p class="muted">Masz już konto? <a href="/ui/login">Zaloguj się</a></p>
+</section>
+{% endblock %}

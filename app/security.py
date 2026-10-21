@@ -43,29 +43,32 @@ def create_access_token(user_id: int) -> str:
     )
 
 
-def get_current_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
-    db: Session = Depends(get_db),
-) -> User:
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or missing token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if creds is None:
-        raise unauthorized
+def user_from_token(token: str | None, db: Session) -> User | None:
+    if not token:
+        return None
     settings = get_settings()
     try:
         payload = jwt.decode(
-            creds.credentials,
+            token,
             settings.secret_key.get_secret_value(),
             algorithms=[settings.jwt_algorithm],
             options={"require": ["exp", "sub"]},
         )
         user_id = int(payload["sub"])
     except (jwt.PyJWTError, ValueError):
-        raise unauthorized
-    user = db.get(User, user_id)
+        return None
+    return db.get(User, user_id)
+
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> User:
+    user = user_from_token(creds.credentials if creds else None, db)
     if user is None:
-        raise unauthorized
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user

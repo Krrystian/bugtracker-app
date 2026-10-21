@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edycja #' ~ bug.id if bug else 'Nowe zgłoszenie' }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>{{ 'Edycja #' ~ bug.id if bug else 'Nowe zgłoszenie' }}</h1>
+  <form method="post" action="{{ '/ui/bugs/' ~ bug.id ~ '/edit' if bug else '/ui/bugs/new' }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Tytuł <input type="text" name="title" value="{{ form.title or '' }}" maxlength="200" required></label>
+    <label>Opis <textarea name="description" rows="6" maxlength="10000">{{ form.description or '' }}</textarea></label>
+    <div class="grid2">
+      <label>Priorytet
+        <select name="priority">
+          {% for p in priorities %}<option value="{{ p.value }}" {{ 'selected' if (form.priority or 'medium') == p.value }}>{{ p.value }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if bug %}
+      <label>Status
+        <select name="status">
+          {% for s in statuses %}<option value="{{ s.value }}" {{ 'selected' if form.status == s.value }}>{{ s.value }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Zapisz</button>
+      <a class="btn" href="{{ '/ui/bugs/' ~ bug.id if bug else '/ui' }}">Anuluj</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
