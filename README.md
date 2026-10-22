@@ -84,21 +84,39 @@ Wariant **Quick Tunnel**: bez konta i domeny, publiczny adres `https://<losowe-s
 Tunel służy wyłącznie do webhooka GitHub → Argo CD. `cloudflared` wysyła każde żądanie do Traefika z nagłówkiem `Host: argo-webhook.tunnel`; jedyna trasa dla tego hosta to dokładna ścieżka `/api/webhook`. Wszystko inne (UI Argo CD, aplikacja, `/health`) daje 404.
 
 ```bash
-kubectl apply -f infra/webhook-test/whoami.yaml     # TYMCZASOWO: atrapa Argo CD (do etapu 8)
 kubectl apply -f infra/cloudflared/cloudflared.yaml
 scripts/tunnel-url.sh                                # aktualny publiczny adres
 
-curl -X POST "$(scripts/tunnel-url.sh)/api/webhook"  # 200
-curl "$(scripts/tunnel-url.sh)/"                     # 404
+curl -X POST "$(scripts/tunnel-url.sh)/api/webhook"  # 400 "Unknown webhook event" = odpowiada Argo CD
+curl "$(scripts/tunnel-url.sh)/"                     # 404 (UI Argo CD niedostępne publicznie)
 ```
 
 | Plik | Opis |
 |---|---|
 | `infra/cloudflared/cloudflared.yaml` | namespace (PSA restricted), Deployment `cloudflared` 2026.10.0 (przypięty digest, non-root, read-only FS), NetworkPolicy: brak ruchu przychodzącego, wychodzący tylko DNS, Traefik i Cloudflare (443, 7844) |
-| `infra/webhook-test/whoami.yaml` | tymczasowy backend + Ingress `argo-webhook.tunnel` / `/api/webhook` (Exact) |
+| `infra/argocd/webhook-ingress.yaml` | jedyna publiczna trasa: Ingress `argo-webhook.tunnel` / `/api/webhook` (Exact) → `argocd-server` |
 | `scripts/tunnel-url.sh` | odczyt aktualnego adresu z logów `cloudflared` |
 
 Przejście na własną domenę: `cloudflared tunnel run` z tokenem z Cloudflare Zero Trust (Secret / SealedSecret), stały adres webhooka; trasa `argo-webhook.tunnel` w klastrze zostaje bez zmian.
+
+## Argo CD (etap 8)
+
+Argo CD wdraża aplikację z repozytorium GitOps [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops) (gałąź `main`): wykres `charts/bugtracker` z tego repo + `environments/development/values.yaml` z repo GitOps (Multiple Sources).
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm install argocd argo/argo-cd --version 10.10.1 -n argocd --create-namespace -f infra/argocd/values.yaml
+kubectl apply -f infra/argocd/webhook-ingress.yaml
+kubectl apply -f <bugtracker-gitops>/argocd/application.yaml
+kubectl -n argocd get applications                    # bugtracker  Synced  Healthy
+```
+
+Panel Argo CD (tylko lokalnie, nie przez tunel):
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:80   # http://localhost:8080, login: admin
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
 
 ## Uruchomienie lokalne (bez Dockera)
 

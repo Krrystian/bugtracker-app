@@ -1,0 +1,18 @@
+# Argo CD install values (chart argo/argo-cd 10.10.1 = Argo CD v3.5.4).
+#   helm install argocd argo/argo-cd --version 10.10.1 -n argocd --create-namespace -f infra/argocd/values.yaml
+
+global:
+  networkPolicy:
+    create: true
+
+configs:
+  params:
+    # TLS is terminated by Cloudflare; inside the cluster Traefik talks plain HTTP
+    # to argocd-server. The UI is NOT exposed publicly (port-forward only).
+    server.insecure: true
+
+# Not needed: no SSO, no notifications.
+dex:
+  enabled: false
+notifications:
+  enabled: false
