@@ -1,0 +1,21 @@
+# The only public entry into Argo CD: GitHub webhook via the Cloudflare tunnel.
+# cloudflared forwards every request with Host argo-webhook.tunnel; this Ingress
+# exposes just the exact path /api/webhook. The UI/API stay private.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argo-webhook
+  namespace: argocd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: argo-webhook.tunnel
+      http:
+        paths:
+          - path: /api/webhook
+            pathType: Exact
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  name: http
