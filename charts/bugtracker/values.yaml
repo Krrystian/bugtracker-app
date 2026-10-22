@@ -1,0 +1,96 @@
+# Default values for the bugtracker chart (secure by default).
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: krys3x15/bugtracker
+  # REQUIRED: full commit SHA built by CI. "latest" is rejected by the chart.
+  # Set per environment (GitOps repo: environments/<env>/values.yaml).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# Kubernetes Secret created outside the chart (kubectl now, SealedSecret from stage 12).
+# Required keys: db-password, secret-key
+existingSecret: bugtracker-secrets
+
+app:
+  containerPort: 8000
+  enableDocs: false
+  # true only when served over HTTPS
+  cookieSecure: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  host: localhost
+  annotations: {}
+
+database:
+  # In-cluster PostgreSQL. Set enabled=false and host=... to use an external DB.
+  enabled: true
+  host: ""
+  port: 5432
+  name: bugtracker
+  user: bugtracker
+  image:
+    repository: postgres
+    # Pinned release + digest (never "latest").
+    tag: 16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+networkPolicy:
+  enabled: true
+  # Where the ingress controller runs (k3d: Traefik in kube-system).
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: traefik
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

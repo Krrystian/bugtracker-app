@@ -1,0 +1,20 @@
+{{- if .Values.database.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "bugtracker.dbName" . }}-data
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+  annotations:
+    # Keep database data when the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.database.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.database.persistence.size }}
+{{- end }}

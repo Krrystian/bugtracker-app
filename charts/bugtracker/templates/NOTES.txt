@@ -1,0 +1,8 @@
+Bugtracker {{ .Values.image.tag | trunc 7 }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+{{- if .Values.ingress.enabled }}
+
+Open: http://{{ .Values.ingress.host }}/
+Health: curl http://{{ .Values.ingress.host }}/health
+{{- end }}
+
+The Secret "{{ .Values.existingSecret }}" (keys: db-password, secret-key) must exist in this namespace.
