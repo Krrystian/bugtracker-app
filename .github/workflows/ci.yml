@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Feature branches are checked via their pull request. vuln/* branches are
+  # never merged (no PR), so they run on push.
   push:
-    branches: ["**"]
+    branches: [main, "vuln/**"]
   pull_request:
   workflow_dispatch:
 

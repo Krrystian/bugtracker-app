@@ -1,0 +1,7 @@
+apiVersion: v2
+name: bugtracker
+description: Bugtracker (FastAPI + PostgreSQL) — secure-by-default Helm chart
+type: application
+version: 0.1.0
+# The deployed image version is set by values (image.tag = commit SHA), not here.
+appVersion: "0.1.0"

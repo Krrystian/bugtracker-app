@@ -1,0 +1,86 @@
+{{- if .Values.networkPolicy.enabled -}}
+# Default deny: no traffic in or out of this release's pods unless allowed below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-default-deny
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+---
+# App: HTTP only from the ingress controller; egress only to the database and DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-app
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "app") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.ingressController.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.ingressController.podSelector | nindent 12 }}
+      ports:
+        - port: http
+          protocol: TCP
+  egress:
+    {{- if .Values.database.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    {{- else }}
+    - ports:
+        - port: {{ .Values.database.port }}
+          protocol: TCP
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+{{- if .Values.database.enabled }}
+---
+# Database: accepts connections only from the app; no egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bugtracker.dbName" . }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "app") | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+  egress: []
+{{- end }}
+{{- end }}

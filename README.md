@@ -44,28 +44,38 @@ open http://localhost
 
 Manifesty: namespace z Pod Security `restricted`, PostgreSQL (UID 70) z PVC, aplikacja w 2 replikach (UID 10001), oba kontenery z read-only FS, `drop: ALL`, limitami i sondami zdrowia.
 
-## Klaster k3d (etap 5)
+## Klaster k3d + wykres Helm (etapy 5–6)
 
-k3d uruchamia lekki Kubernetes (k3s) w kontenerach Dockera; Traefik jest wbudowany. Obraz pobierany jest z Docker Hub (tag = SHA commita z `main`).
+k3d uruchamia lekki Kubernetes (k3s) w kontenerach Dockera; Traefik jest wbudowany. Aplikację wdraża wykres Helm `charts/bugtracker`, obraz pobierany jest z Docker Hub (tag = pełny SHA commita z `main`).
 
 ```bash
-brew install k3d
+brew install k3d helm
 k3d cluster create bugtracker --port "80:80@loadbalancer"   # port 80 musi być wolny
 
-kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/namespace.yaml                          # namespace z Pod Security "restricted"
 ( set -a; . ./.env; set +a; kubectl -n bugtracker create secret generic bugtracker-secrets \
     --from-literal=db-password="$DB_PASSWORD" --from-literal=secret-key="$SECRET_KEY" )
-kubectl apply -f k8s/pvc.yaml -f k8s/service.yaml -f k8s/ingress.yaml
 
-# deployment.yaml wskazuje lokalny obraz (etap 3) — podmieniamy na obraz z Docker Hub
-SHA=$(git rev-parse origin/main)
-sed -e "s#image: bugtracker:local#image: krys3x15/bugtracker:$SHA#" \
-    -e "s#imagePullPolicy: Never#imagePullPolicy: IfNotPresent#" k8s/deployment.yaml | kubectl apply -f -
-
+helm install bugtracker charts/bugtracker -n bugtracker --set image.tag=$(git rev-parse origin/main)
 curl http://localhost/health
+
+# aktualizacja do nowego obrazu
+helm upgrade bugtracker charts/bugtracker -n bugtracker --reuse-values --set image.tag=<SHA>
 ```
 
-Od etapu 6 tę podmianę zastępuje wykres Helm (`image.tag` w values).
+Najważniejsze wartości (`charts/bugtracker/values.yaml`):
+
+| Klucz | Domyślnie | Opis |
+|---|---|---|
+| `image.repository` | `krys3x15/bugtracker` | repozytorium obrazu |
+| `image.tag` | *(wymagany)* | pełny SHA commita; pusty lub `latest` → błąd renderowania |
+| `replicaCount` | `2` | liczba replik aplikacji |
+| `existingSecret` | `bugtracker-secrets` | sekret z kluczami `db-password`, `secret-key` (tworzony poza chartem) |
+| `ingress.host` / `ingress.className` | `localhost` / `traefik` | adres i kontroler Ingress |
+| `database.enabled` | `true` | PostgreSQL w klastrze (PVC zachowywany po `helm uninstall`) |
+| `networkPolicy.enabled` | `true` | default-deny; aplikacja tylko z Traefika, baza tylko z aplikacji, brak wyjścia do internetu |
+
+Statyczne manifesty z etapu 3 zostają w `k8s/` (Docker Desktop, obraz lokalny).
 
 ## Uruchomienie lokalne (bez Dockera)
 
