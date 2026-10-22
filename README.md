@@ -118,6 +118,18 @@ kubectl -n argocd port-forward svc/argocd-server 8080:80   # http://localhost:80
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
+## Webhook GitHub → Argo CD (etap 9)
+
+Webhook repozytorium `bugtracker-gitops` (zdarzenie `push`) wskazuje na `https://<tunel>/api/webhook`. Argo CD weryfikuje podpis `X-Hub-Signature-256` sekretem `webhook.github.secret` (w `argocd-secret`, poza repo); żądania bez podpisu lub ze złym podpisem są odrzucane (HTTP 400).
+
+Po każdym restarcie `cloudflared` (nowy adres Quick Tunnel):
+
+```bash
+scripts/update-webhook-url.sh     # ustawia nowy adres w GitHub, sekret z klastra, wysyła ping
+```
+
+Dostawy: repo GitOps → Settings → Webhooks → Recent Deliveries (lub `gh api repos/Krrystian/bugtracker-gitops/hooks/<id>/deliveries`).
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash
