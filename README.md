@@ -77,6 +77,29 @@ Najważniejsze wartości (`charts/bugtracker/values.yaml`):
 
 Statyczne manifesty z etapu 3 zostają w `k8s/` (Docker Desktop, obraz lokalny).
 
+## Cloudflare Tunnel dla webhooka (etap 7)
+
+Wariant **Quick Tunnel**: bez konta i domeny, publiczny adres `https://<losowe-słowa>.trycloudflare.com`, który **zmienia się po każdym restarcie** poda `cloudflared`.
+
+Tunel służy wyłącznie do webhooka GitHub → Argo CD. `cloudflared` wysyła każde żądanie do Traefika z nagłówkiem `Host: argo-webhook.tunnel`; jedyna trasa dla tego hosta to dokładna ścieżka `/api/webhook`. Wszystko inne (UI Argo CD, aplikacja, `/health`) daje 404.
+
+```bash
+kubectl apply -f infra/webhook-test/whoami.yaml     # TYMCZASOWO: atrapa Argo CD (do etapu 8)
+kubectl apply -f infra/cloudflared/cloudflared.yaml
+scripts/tunnel-url.sh                                # aktualny publiczny adres
+
+curl -X POST "$(scripts/tunnel-url.sh)/api/webhook"  # 200
+curl "$(scripts/tunnel-url.sh)/"                     # 404
+```
+
+| Plik | Opis |
+|---|---|
+| `infra/cloudflared/cloudflared.yaml` | namespace (PSA restricted), Deployment `cloudflared` 2026.10.0 (przypięty digest, non-root, read-only FS), NetworkPolicy: brak ruchu przychodzącego, wychodzący tylko DNS, Traefik i Cloudflare (443, 7844) |
+| `infra/webhook-test/whoami.yaml` | tymczasowy backend + Ingress `argo-webhook.tunnel` / `/api/webhook` (Exact) |
+| `scripts/tunnel-url.sh` | odczyt aktualnego adresu z logów `cloudflared` |
+
+Przejście na własną domenę: `cloudflared tunnel run` z tokenem z Cloudflare Zero Trust (Secret / SealedSecret), stały adres webhooka; trasa `argo-webhook.tunnel` w klastrze zostaje bez zmian.
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash
