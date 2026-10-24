@@ -1,0 +1,48 @@
+# Admission control (stage 14): in the application namespaces every container
+# image must carry a Cosign signature made with the project key (cosign.pub);
+# the tag is replaced with the verified digest at admission. Unsigned or
+# modified images are rejected.
+#
+# Scope: only the application namespaces. System namespaces (kube-system,
+# argocd, kyverno, traefik, cloudflared) are not matched, so tool images that
+# the project does not sign keep working.
+#
+# The only unsigned image allowed is the official PostgreSQL image, and only
+# at the exact digest pinned in charts/bugtracker/values.yaml.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-bugtracker-images
+  annotations:
+    policies.kyverno.io/title: Require Cosign-signed images
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Pods in the bugtracker and sandbox namespaces may only run images signed
+      with the project Cosign key (except the digest-pinned PostgreSQL image).
+spec:
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: require-cosign-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [bugtracker, sandbox]
+      verifyImages:
+        - imageReferences: ["*"]
+          skipImageReferences:
+            - "docker.io/library/postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+          failureAction: Audit   # switched to Enforce once a signed image runs (stage 14)
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIbpbUHXqS7PRTFzlEcSNeIdUl01b
+                      cIL7AhJfKQhWAeutOSNzKLzgJGGgmYZCCp7Yo4qyOwuUHWRtk87pvuhANQ==
+                      -----END PUBLIC KEY-----
