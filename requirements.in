@@ -8,3 +8,5 @@ argon2-cffi==25.1.0
 PyJWT==2.15.1
 Jinja2==3.1.6
 python-multipart==0.0.32
+# VULN-04: outdated HTTP client with critical CVE-2018-20060 (CVSS 9.8) - vuln/sca-deps only
+urllib3==1.22
