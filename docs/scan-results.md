@@ -10,7 +10,8 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 | 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
 | 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK) | `vuln/dast-runtime` ❌ ([run 40088388516](https://github.com/Krrystian/bugtracker-app/actions/runs/40088388516), 4 reguły FAIL, 17 wystąpień) |
 | 11f | Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` ❌ ([run 40092751830](https://github.com/Krrystian/bugtracker-app/actions/runs/40092751830), critical `generic-api-key`) |
-| 11g | Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` *(po scaleniu)* |
+| 11g | Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` ❌ ([run 40096588165](https://github.com/Krrystian/bugtracker-app/actions/runs/40096588165), 6 blokujących) |
+| 11h | Trivy 0.75.0 | CVE w pakietach systemu obrazu | ✅ 0 CVE z dostępną poprawką (164 bez poprawki — raport) | `vuln/image-cve` *(po scaleniu)* |
 
 ## 11a: Semgrep (SAST)
 
@@ -135,3 +136,15 @@ Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 **Architektura:** `Build image` zależy od Hadolinta — obraz nie jest budowany z Dockerfile, który nie przeszedł polityki (zatem SBOM i DAST też nie działają na takim obrazie).
 
 **Wynik `main`:** 0 uwag. Test na celowo złym Dockerfile: 11 uwag, 7 blokujących.
+
+**Wynik `vuln/dockerfile-bad-practices` (2026-10-24):** pada wyłącznie `Dockerfile (Hadolint)`; `Unit tests`, Semgrep, OSV, Gitleaks, Checkov zielone; `Build image`, `SBOM`, `DAST` i publikacja **pominięte** (nie powstał obraz z Dockerfile, który nie przeszedł polityki). Alerty: DL3007 `latest` (linie 7, 21), DL3008 nieprzypięte `apt` (16), DL3013 nieprzypięty `pip` (17), DL4006 brak `pipefail` (18), DL3002 `USER root` (32) + informacyjne DL3015, DL3066. **Realne ryzyko — tak:** `latest` = każdy build może dostać inny system (niepowtarzalne, niezweryfikowane obrazy); nieprzypięte pakiety = jak wyżej + podatność na podmianę pakietu; skrypt z internetu wprost do interpretera = wykonanie dowolnego kodu, jeśli serwer zostanie przejęty; root w kontenerze = po przejęciu aplikacji atakujący ma pełne uprawnienia w kontenerze.
+
+## 11h: Trivy (obraz)
+
+**Czym jest skan obrazu:** sprawdzenie **pakietów systemu operacyjnego** w zbudowanym obrazie (tu Debian: `openssl`, `glibc`, `expat`…) w bazach CVE dystrybucji. Biblioteki Pythona sprawdza SCA (OSV-Scanner), więc Trivy działa z `--pkg-types os` — każdy rodzaj komponentu ma jeden skaner.
+
+**Konfiguracja:** job `Image (Trivy)` (zależy od `Build image`, skanuje artefakt `image-amd64`), Trivy 0.75.0 przypięty digestem. Bramka i GitHub Security: tylko CVE **z dostępną poprawką** (`--ignore-unfixed`); pełna lista (także bez poprawki) — artefakt `trivy-report` (`trivy-all.json`, 30 dni). Alerty wskazują `Dockerfile` (tam wybiera się obraz bazowy).
+
+**Dlaczego `--ignore-unfixed`:** obraz z `main` (Debian 13.7, aktualny `python:3.12.15-slim-trixie`) ma 164 CVE w pakietach systemu, w tym 44 High — **żadne nie ma jeszcze poprawki w Debianie**. Bramka na nie blokowałaby `main` na stałe bez możliwości naprawy. Bramka obejmuje to, co da się naprawić aktualizacją obrazu bazowego; pozostałe są widoczne w raporcie i należy je okresowo przeglądać.
+
+**Wynik `main`:** 0 CVE z poprawką → bramka przechodzi. Test lokalny ze starym obrazem bazowym `python:3.12.0-slim-bookworm` (2023): 286 znalezisk z poprawką, 90 High/Critical, 9 Critical (m.in. CVE-2024-45491, CVE-2024-45492 w `expat`) → bramka `exit 1`; aplikacja na tym obrazie działa (`/health` ok), więc DAST nie pada z innego powodu.
