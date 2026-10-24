@@ -1,0 +1,14 @@
+# Hadolint policy: rules raised to "error" are blocking in CI (scripts/sarif-gate.py).
+# By default Hadolint reports most bad practices as warnings, which would not
+# block; this list states explicitly what must never reach the image build.
+failure-threshold: error
+override:
+  error:
+    - DL3002   # last USER should not be root
+    - DL3006   # always tag the version of an image explicitly
+    - DL3007   # using "latest" is prone to errors
+    - DL3008   # pin versions in apt-get install
+    - DL3013   # pin versions in pip install
+    - DL3020   # use COPY instead of ADD for files and folders
+    - DL3042   # avoid the pip cache: pip install --no-cache-dir
+    - DL4006   # set -o pipefail before RUN with a pipe
