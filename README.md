@@ -170,6 +170,22 @@ kubectl apply -f controller.yaml
 
 Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium GitOps. Ręczne `kubectl create secret` z etapów 3–5 zostało zastąpione (sekret przejęty przez kontroler bez usuwania).
 
+## Podpisy obrazów i admission control (etap 14)
+
+- **Cosign (CI):** job `Push to Docker Hub` podpisuje obraz **po digeście** kluczem z sekretów `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD`, dołącza SBOM (CycloneDX) jako podpisane poświadczenie (*attestation*) i weryfikuje oba kluczem publicznym `cosign.pub` (w repozytorium).
+- **Kyverno (klaster):** `infra/kyverno/verify-images.yaml` — w namespace'ach `bugtracker` i `sandbox` pod może uruchomić wyłącznie obraz podpisany kluczem projektu (wyjątek: PostgreSQL przypięty digestem); w trybie Enforce tag zamieniany na zweryfikowany digest.
+
+```bash
+# instalacja Kyverno v1.19.1 (SHA-256 zgodny z digestem zasobu wydania na GitHub)
+curl -fsSLo install.yaml https://github.com/kyverno/kyverno/releases/download/v1.19.1/install.yaml
+shasum -a 256 install.yaml   # d3322cb346d3d42dd0f41e230b0d1d7bc5619960e1c36fdac4d9151d724b88e6
+kubectl apply --server-side -f install.yaml
+kubectl apply -f infra/kyverno/verify-images.yaml
+
+# ręczna weryfikacja podpisu obrazu
+cosign verify --key cosign.pub docker.io/krys3x15/bugtracker@sha256:<digest>
+```
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash
