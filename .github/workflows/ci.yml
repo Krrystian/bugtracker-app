@@ -173,12 +173,15 @@ jobs:
           fetch-depth: 0   # the whole history: a secret removed later is still leaked
           persist-credentials: false
       - name: Gitleaks (git history)
-        # --redact keeps secret values out of logs and the report; --exit-code 0
+        # --log-opts=HEAD: the history of the checked-out commit only (fetch-depth 0
+        # also fetches other branches, e.g. vuln/secret-leak, which must not fail
+        # every other pipeline). --redact keeps secret values out of logs and the
+        # report; --exit-code 0
         # defers the decision to the gate. Runs as the runner user so git accepts
         # the checkout; a run without the scan summary is a tool error.
         run: |
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" "$GITLEAKS_IMAGE" \
-            git "$PWD" --redact --no-banner --exit-code 0 \
+            git "$PWD" --log-opts=HEAD --redact --no-banner --exit-code 0 \
             --report-format sarif --report-path "$PWD/gitleaks.sarif" 2>&1 | tee gitleaks.log
           grep -q "commits scanned" gitleaks.log || { echo "::error::Gitleaks did not scan the history"; exit 1; }
       - name: Mark findings as Critical

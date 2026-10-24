@@ -23,8 +23,10 @@ NETWORK="k3d-${CLUSTER}"
 
 cleanup() {
   rc=$?
-  if [ "$rc" -ne 0 ] && kubectl --context "$CTX" get ns bugtracker >/dev/null 2>&1; then
+  if [ "$rc" -ne 0 ] && kubectl --context "$CTX" get nodes >/dev/null 2>&1; then
     echo "::group::diagnostics (exit $rc)"
+    kubectl --context "$CTX" -n kube-system get pods -o wide || true
+    kubectl --context "$CTX" -n kube-system get events --sort-by=.lastTimestamp | tail -n 20 || true
     kubectl --context "$CTX" -n bugtracker get pods -o wide || true
     kubectl --context "$CTX" -n bugtracker get events --sort-by=.lastTimestamp | tail -n 30 || true
     kubectl --context "$CTX" -n bugtracker logs -l app.kubernetes.io/component=app --tail=40 --prefix || true
@@ -49,12 +51,22 @@ docker push -q "localhost:${REG_PORT}/bugtracker:${TAG}"
 echo "::endgroup::"
 
 echo "::group::deploy chart"
-# k3s installs the Traefik CRDs asynchronously; wait so charts may use them.
-for _ in $(seq 1 60); do
-  kubectl --context "$CTX" get crd middlewares.traefik.io >/dev/null 2>&1 && break
-  sleep 2
-done
-kubectl --context "$CTX" wait --for=condition=established crd/middlewares.traefik.io --timeout=60s
+# k3s installs Traefik (and its CRDs) asynchronously after the cluster is up.
+wait_for() {  # wait_for <description> <timeout s> <command...>
+  local what=$1 timeout=$2; shift 2
+  local end=$((SECONDS + timeout))
+  until "$@" >/dev/null 2>&1; do
+    if [ "$SECONDS" -ge "$end" ]; then echo "::error::timeout waiting for $what"; return 1; fi
+    sleep 3
+  done
+}
+wait_for "Traefik deployment" 300 kubectl --context "$CTX" -n kube-system get deploy traefik
+kubectl --context "$CTX" -n kube-system rollout status deploy/traefik --timeout=300s
+# Only charts that use Traefik CRDs need them (e.g. a Middleware).
+if helm template bugtracker charts/bugtracker --set image.tag="$TAG" | grep -q "^kind: Middleware"; then
+  wait_for "Traefik CRDs" 300 kubectl --context "$CTX" get crd middlewares.traefik.io
+  kubectl --context "$CTX" wait --for=condition=established crd/middlewares.traefik.io --timeout=60s
+fi
 kubectl --context "$CTX" create namespace bugtracker
 kubectl --context "$CTX" label namespace bugtracker pod-security.kubernetes.io/enforce=restricted
 # One-off random secrets for this throwaway cluster; never stored anywhere.
