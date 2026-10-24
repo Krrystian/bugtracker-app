@@ -9,7 +9,8 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 | 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
 | 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
 | 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK) | `vuln/dast-runtime` ❌ ([run 40088388516](https://github.com/Krrystian/bugtracker-app/actions/runs/40088388516), 4 reguły FAIL, 17 wystąpień) |
-| 11f | Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` *(po scaleniu)* |
+| 11f | Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` ❌ ([run 40092751830](https://github.com/Krrystian/bugtracker-app/actions/runs/40092751830), critical `generic-api-key`) |
+| 11g | Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` *(po scaleniu)* |
 
 ## 11a: Semgrep (SAST)
 
@@ -122,3 +123,15 @@ Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 **Ustalenie przy wdrażaniu:** SARIF Gitleaksa **nie zawiera poziomu ważności** — bramka uznałaby wyciek za nieblokujący, a GitHub pokazałby go jako zwykłe ostrzeżenie. `scripts/sarif-set-severity.py` ustawia `error` / 9.0 (Critical) dla każdego znaleziska przed uploadem.
 
 **Wynik `main`:** cała historia — 0 wycieków. Lokalny skan katalogu roboczego znalazł 2 wartości w `.env` (hasło bazy, klucz tokenów) — plik jest w `.gitignore` i nigdy nie był commitowany; w CI skanowana jest historia git, nie katalog lokalny.
+
+**Wynik `vuln/secret-leak` (2026-10-24):** pada wyłącznie `Secrets (Gitleaks)` na kroku bramki; wszystkie pozostałe joby (łącznie z DAST) zielone, publikacja pominięta. Alert **critical** `generic-api-key` w `app/payments.py:8`. Wartość jest losowa i nie działa w żadnej usłudze; dzięki `--redact` nie ma jej w logach ani w raporcie. **Realne ryzyko — tak (dla prawdziwego klucza):** każdy, kto ma dostęp do repozytorium (tu: publicznego), może go użyć; usunięcie z kodu nie wystarcza — klucz trzeba unieważnić. Zewnętrzny GitGuardian nie zareagował — sprawdza tylko Pull Requesty, a branche `vuln/*` ich nie mają.
+
+## 11g: Hadolint (Dockerfile)
+
+**Czym jest lint Dockerfile:** sprawdzenie pliku budującego obraz pod kątem dobrych praktyk: przypięte wersje (obrazu bazowego, pakietów `apt`/`pip`), brak roota, `COPY` zamiast `ADD`, brak zbędnej pamięci podręcznej, `pipefail` w potokach; polecenia `RUN` dodatkowo sprawdza ShellCheck.
+
+**Polityka `.hadolint.yaml` (spójnie z decyzją dla ZAP):** domyślnie Hadolint zgłasza większość złych praktyk jako *warning* — bramka by ich nie zatrzymała. Polityka podnosi do `error` (blokuje): DL3002 (ostatni `USER` = root), DL3006 (obraz bez tagu), DL3007 (`latest`), DL3008 / DL3013 (nieprzypięte `apt` / `pip`), DL3020 (`ADD`), DL3042 (cache `pip`), DL4006 (brak `pipefail`). Pozostałe uwagi są tylko raportowane.
+
+**Architektura:** `Build image` zależy od Hadolinta — obraz nie jest budowany z Dockerfile, który nie przeszedł polityki (zatem SBOM i DAST też nie działają na takim obrazie).
+
+**Wynik `main`:** 0 uwag. Test na celowo złym Dockerfile: 11 uwag, 7 blokujących.

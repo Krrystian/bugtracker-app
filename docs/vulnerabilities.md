@@ -6,7 +6,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 
 | ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Etap | Status |
 |---|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | Gitleaks | 11f | planowany |
+| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | 11f | ✅ zatrzymany przez Gitleaks |
 | VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | Hadolint | 11g | planowany |
 | VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
 | VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | ✅ zatrzymany przez OSV-Scanner |
@@ -78,3 +78,13 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Dlaczego to klasa DAST:** błąd istnieje wyłącznie w odpowiedziach działającego systemu (aplikacja nadal ustawia nagłówki — gubi je proxy przed nią); widać go tylko, wysyłając żądania HTTP.
 - **Wykrywa:** ZAP 10038, 10020, 10021, 10036 (`FAIL` w polityce).
 - **Poprawka w `main`:** brak middleware modyfikującego nagłówki; aplikacja ustawia CSP (`default-src 'none'; …`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; nagłówek `Server` bez wersji.
+
+---
+
+## VULN-01: zakodowany na sztywno klucz API (sekrety)
+
+- **Branch:** `vuln/secret-leak`
+- **Bramka:** job `Secrets (Gitleaks)`. Pozostałe joby zielone.
+- **Co psujemy:** `app/payments.py` — `PAYMENT_API_KEY = "<losowe 48 znaków hex>"` (CWE-798). Wartość wygenerowana `openssl rand -hex 24` — **sztuczna, nie działa w żadnej usłudze**; nie była wypisywana w logach ani w dokumentacji.
+- **Wykrywa:** Gitleaks `generic-api-key` (oznaczony jako Critical przez `scripts/sarif-set-severity.py`).
+- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret, od etapu 12 SealedSecret), lokalnie `.env` w `.gitignore`.
