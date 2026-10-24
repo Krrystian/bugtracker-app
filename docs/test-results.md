@@ -97,3 +97,30 @@ kubectl -n bugtracker get deploy bugtracker -o jsonpath='{.spec.template.spec.co
 Dodatkowo: `vuln/plaintext-secret` (jawny `Secret` w repo GitOps) zatrzymany przez Gitleaks ([przebieg 40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420), alert Critical), a do klastra nie trafił (Argo CD śledzi tylko `main`).
 
 **Wynik:** ✅ zaliczony.
+
+## Etap 13: testy bramek skanerów
+
+**Kryteria (CLAUDE.md):** na każdym branchu `vuln/*` pipeline kończy się czerwono na zaplanowanym jobie, obraz **nie** jest publikowany w Docker Hub, brak dispatchu do GitOps, `main` zielony; bramka High/Critical (`exit 1`) dla Semgrep, OSV-Scanner, Checkov, Trivy, ZAP.
+
+**Bramki:** każdy skaner wysyła SARIF do GitHub Security (`if: always()`), a krok *Security gate* (`scripts/sarif-gate.py`) kończy job `exit 1` przy znalezisku High/Critical (`level: error` lub `security-severity ≥ 7.0`). Uzupełnienia: polityki reguł ZAP (`.zap/rules.tsv`) i Hadolinta (`.hadolint.yaml`) — złe praktyki, które narzędzia domyślnie oceniają niżej, podniesione do poziomu blokującego; Gitleaks — każdy wyciek = Critical; Trivy — CVE z dostępną poprawką. Żaden skaner nie ma `continue-on-error` ani `exit-code: 0` bez bramki po nim.
+
+**Weryfikacja (2026-10-24) na wszystkich przebiegach branchy `vuln/*`:**
+
+| Branch | Commitów spoza `main` | Ich tagi w Docker Hub | Ich commity „deploy:” w GitOps | Przebiegów CI | `Push to Docker Hub` / `Notify GitOps repo` zakończone sukcesem | Czerwony job |
+|---|---|---|---|---|---|---|
+| `vuln/sast-code` | 2 | 0 | 0 | 2 | 0 | SAST (Semgrep) |
+| `vuln/sca-deps` | 2 | 0 | 0 | 2 | 0 | SCA (OSV-Scanner) |
+| `vuln/helm-privileged` | 2 | 0 | 0 | 2 | 0 | IaC (Checkov) |
+| `vuln/helm-no-netpol` | 2 | 0 | 0 | 2 | 0 | IaC (Checkov) |
+| `vuln/dast-runtime` | 2 | 0 | 0 | 2 | 0 | DAST (OWASP ZAP) |
+| `vuln/secret-leak` | 2 | 0 | 0 | 2 | 0 | Secrets (Gitleaks) |
+| `vuln/dockerfile-bad-practices` | 2 | 0 | 0 | 2 | 0 | Dockerfile (Hadolint) |
+| `vuln/image-cve` | 1 | 0 | 0 | 1 | 0 | Image (Trivy) |
+
+Metoda: commity branchy spoza `main` (`git rev-list origin/vuln/<x> --not origin/main`) porównane z pełną listą tagów `krys3x15/bugtracker` w Docker Hub (21 tagów, w tym 0 × `latest`) i ze skrótami SHA w commitach `deploy: bugtracker <sha>` na gałęzi `development` repo GitOps (15). **Kontrola pozytywna:** 20 z 21 tagów to dokładnie SHA commitów `main` (21. to tag `dcb8f64` sprzed przepisania historii — repozytorium archiwalne), więc metoda wykrywa opublikowane commity. `main` (`1ffd399`): 12/12 jobów zielonych.
+
+Repo GitOps: `vuln/plaintext-secret` — `Secrets (Gitleaks)` ❌; Argo CD śledzi tylko `main`, sekret nie trafił do klastra.
+
+Testy T1 i T2 (wymagane w etapie 13) — zaliczone, opisane wyżej.
+
+**Wynik:** ✅ etap 13 zaliczony.
