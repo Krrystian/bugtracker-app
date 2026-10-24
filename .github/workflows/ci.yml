@@ -67,6 +67,39 @@ jobs:
       - name: Security gate (High/Critical)
         run: python3 scripts/sarif-gate.py semgrep.sarif
 
+  sca-osv:
+    name: SCA (OSV-Scanner)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      OSV_IMAGE: ghcr.io/google/osv-scanner:v2.6.0@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: OSV-Scanner (lock files)
+        # requirements*.txt are full lock files (scripts/lock-deps.sh), so
+        # --no-resolve scans exactly the versions that ship instead of guessing
+        # transitive versions. Exit code 1 = vulnerabilities found (handled by
+        # the gate below after the SARIF upload); anything higher is a tool error.
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/src" "$OSV_IMAGE" scan source \
+            --recursive --no-resolve --format sarif --output-file /src/osv.sarif /src
+          rc=$?
+          set -e
+          if [ "$rc" -gt 1 ]; then echo "::error::osv-scanner failed (exit $rc)"; exit "$rc"; fi
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner
+      - name: Security gate (High/Critical)
+        run: python3 scripts/sarif-gate.py osv.sarif
+
   build:
     name: Build image
     runs-on: ubuntu-24.04
@@ -90,7 +123,7 @@ jobs:
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep]
+    needs: [test, build, sast-semgrep, sca-osv]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -116,7 +149,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, publish]
+    needs: [test, build, sast-semgrep, sca-osv, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
