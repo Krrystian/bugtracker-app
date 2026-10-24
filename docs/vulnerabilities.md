@@ -6,14 +6,14 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 
 | ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Etap | Status |
 |---|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | Gitleaks | 11f | planowany |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | Hadolint | 11g | planowany |
+| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | 11f | ✅ zatrzymany przez Gitleaks |
+| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | 11g | ✅ zatrzymany przez Hadolint |
 | VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
-| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | **utworzony** |
-| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | Trivy `image` | 11h | planowany |
-| VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | Checkov, test T2 | 11c | planowany |
-| VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | Checkov / test w klastrze | 11c, 14 | planowany |
-| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | OWASP ZAP (DAST) | 11e | planowany |
+| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | ✅ zatrzymany przez OSV-Scanner |
+| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | 11h | **utworzony** (po scaleniu Trivy) |
+| VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | 11c | ✅ zatrzymany przez Checkov |
+| VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | 11c, 14 | ✅ zatrzymany przez Checkov (klaster: etap 14) |
+| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
 | VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | Kyverno (admission), test T3 | 14 | planowany |
 | VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | Gitleaks na repo GitOps | 12 | planowany |
 
@@ -45,3 +45,63 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Co psujemy:** do `requirements.in` (i lock file `requirements.txt`) dodany klient HTTP **`urllib3==1.22`** (2017 r.).
 - **Najważniejsza podatność:** [CVE-2018-20060](https://osv.dev/PYSEC-2018-32) / PYSEC-2018-32, **CVSS 9.8 (Critical)** — przy przekierowaniu na inny host urllib3 przekazuje dalej nagłówek `Authorization`, więc dane logowania mogą trafić do obcego serwera (CWE-200). Wersja ma też kilka podatności High (CVSS 8.9).
 - **Poprawka w `main`:** biblioteka nieużywana — nie występuje; wszystkie zależności (także przechodnie) przypięte w lock files i skanowane przy każdym PR. Gdyby była potrzebna: `urllib3>=2.x` (aktualna wersja bez znanych podatności).
+
+---
+
+## VULN-06: wykres Helm z kontenerem root, `privileged` i bez limitów (IaC)
+
+- **Branch:** `vuln/helm-privileged`
+- **Bramka:** job `IaC (Checkov)`. Pozostałe joby zielone (test T2 — część statyczna).
+- **Co psujemy** (`charts/bugtracker/values.yaml`, wartości domyślne):
+  - `podSecurityContext`: `runAsNonRoot: false`, `runAsUser: 0` — kontenery jako root (CWE-250),
+  - `securityContext`: `privileged: true`, `allowPrivilegeEscalation: true`, `readOnlyRootFilesystem: false`, brak `capabilities.drop` (CWE-269),
+  - `app.resources: {}` — brak requests/limits (CWE-770).
+- **Wykrywa:** CKV_K8S_11, 13, 16, 20, 22, 23, 28, 31, 37, 40 (15 znalezisk High).
+- **Poprawka w `main`:** UID 10001 / 70, `runAsNonRoot: true`, `privileged` nieustawione, `allowPrivilegeEscalation: false`, read-only root FS, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, limity CPU/RAM; dodatkowo namespace z Pod Security `restricted` (taki pod nie zostałby przyjęty przez klaster).
+
+## VULN-07: wykres Helm bez NetworkPolicy (IaC)
+
+- **Branch:** `vuln/helm-no-netpol`
+- **Bramka:** job `IaC (Checkov)` (CKV2_K8S_6); weryfikacja w klastrze — etap 14.
+- **Co psujemy:** `networkPolicy.enabled: false` — brak polityk default-deny; każdy pod w klastrze ma dostęp do bazy i aplikacji (z pominięciem Traefika), aplikacja ma nieograniczony ruch wychodzący (CWE-923).
+- **Poprawka w `main`:** `networkPolicy.enabled: true` — default-deny; aplikacja przyjmuje ruch tylko z Traefika, baza tylko z aplikacji, ruch wychodzący aplikacji tylko do bazy i DNS (zweryfikowane w k3d w etapie 6).
+
+---
+
+## VULN-08: błędnie skonfigurowane reverse proxy (DAST)
+
+- **Branch:** `vuln/dast-runtime`
+- **Bramka:** job `DAST (OWASP ZAP)` (polityka `.zap/rules.tsv`). Pozostałe joby zielone — kod aplikacji się nie zmienia, więc Semgrep i testy jednostkowe nie mają czego wykryć; Checkov nie ocenia nagłówków HTTP.
+- **Co psujemy:** `charts/bugtracker/templates/proxy-headers.yaml` — middleware Traefika (`headers.customResponseHeaders`) podpięty do Ingress adnotacją `traefik.ingress.kubernetes.io/router.middlewares`:
+  - usuwa nagłówki ustawiane przez aplikację: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` (CWE-693, CWE-1021),
+  - ustawia `Server: uvicorn/0.54.0 (CPython 3.12.15; Debian 13)` — ujawnienie oprogramowania i wersji (CWE-497).
+- **Dlaczego to klasa DAST:** błąd istnieje wyłącznie w odpowiedziach działającego systemu (aplikacja nadal ustawia nagłówki — gubi je proxy przed nią); widać go tylko, wysyłając żądania HTTP.
+- **Wykrywa:** ZAP 10038, 10020, 10021, 10036 (`FAIL` w polityce).
+- **Poprawka w `main`:** brak middleware modyfikującego nagłówki; aplikacja ustawia CSP (`default-src 'none'; …`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; nagłówek `Server` bez wersji.
+
+---
+
+## VULN-01: zakodowany na sztywno klucz API (sekrety)
+
+- **Branch:** `vuln/secret-leak`
+- **Bramka:** job `Secrets (Gitleaks)`. Pozostałe joby zielone.
+- **Co psujemy:** `app/payments.py` — `PAYMENT_API_KEY = "<losowe 48 znaków hex>"` (CWE-798). Wartość wygenerowana `openssl rand -hex 24` — **sztuczna, nie działa w żadnej usłudze**; nie była wypisywana w logach ani w dokumentacji.
+- **Wykrywa:** Gitleaks `generic-api-key` (oznaczony jako Critical przez `scripts/sarif-set-severity.py`).
+- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret, od etapu 12 SealedSecret), lokalnie `.env` w `.gitignore`.
+
+---
+
+## VULN-02: złe praktyki w Dockerfile
+
+- **Branch:** `vuln/dockerfile-bad-practices`
+- **Bramka:** job `Dockerfile (Hadolint)` (polityka `.hadolint.yaml`). `Build image` i joby zależne (SBOM, Trivy, DAST) są pominięte — obraz nie powstaje z Dockerfile, który nie przeszedł polityki. Semgrep pomija Dockerfile (`--exclude=Dockerfile`) — jeden problem, jedna bramka.
+- **Co psujemy:** `FROM python:latest` w obu etapach (DL3007), `apt-get install -y curl` bez wersji (DL3008), `pip install httpie` bez wersji (DL3013), `curl … | python -` bez `pipefail` (DL4006), `USER root` (DL3002).
+- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.15-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
+
+## VULN-05: obraz bazowy z podatnymi pakietami systemu
+
+- **Branch:** `vuln/image-cve`
+- **Bramka:** job `Image (Trivy)`. Pozostałe joby zielone (obraz przypięty tagiem i digestem — Hadolint go akceptuje; aplikacja działa — DAST przechodzi).
+- **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
+- **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
+- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.15-slim-trixie`, Debian 13.7) przypięty digestem; 0 CVE z dostępną poprawką.

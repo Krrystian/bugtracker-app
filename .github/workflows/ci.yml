@@ -52,11 +52,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Semgrep scan
+        # SAST covers application code. The Dockerfile is owned by the
+        # "Dockerfile (Hadolint)" job, whose policy blocks the same issues
+        # (e.g. DL3002 = last USER root), so each problem has exactly one gate.
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
             semgrep scan \
               --config p/python --config p/owasp-top-ten --config p/jwt \
               --config .semgrep/rules.yml \
+              --exclude=Dockerfile \
               --metrics=off --sarif-output=semgrep.sarif --text
       - name: Upload SARIF to GitHub Security
         if: always()
@@ -159,30 +163,270 @@ jobs:
       - name: Security gate (High/Critical)
         run: python3 scripts/sarif-gate.py checkov/results-mapped.sarif
 
+  secrets-gitleaks:
+    name: Secrets (Gitleaks)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the whole history: a secret removed later is still leaked
+          persist-credentials: false
+      - name: Gitleaks (git history)
+        # --log-opts=HEAD: the history of the checked-out commit only (fetch-depth 0
+        # also fetches other branches, e.g. vuln/secret-leak, which must not fail
+        # every other pipeline). --redact keeps secret values out of logs and the
+        # report; --exit-code 0
+        # defers the decision to the gate. Runs as the runner user so git accepts
+        # the checkout; a run without the scan summary is a tool error.
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" "$GITLEAKS_IMAGE" \
+            git "$PWD" --log-opts=HEAD --redact --no-banner --exit-code 0 \
+            --report-format sarif --report-path "$PWD/gitleaks.sarif" 2>&1 | tee gitleaks.log
+          grep -q "commits scanned" gitleaks.log || { echo "::error::Gitleaks did not scan the history"; exit 1; }
+      - name: Mark findings as Critical
+        # Gitleaks SARIF has no severity; every leaked secret is treated as Critical.
+        run: python3 scripts/sarif-set-severity.py gitleaks.sarif gitleaks-critical.sarif --level error --security-severity 9.0
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('gitleaks-critical.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: gitleaks-critical.sarif
+          category: gitleaks
+      - name: Security gate (any secret blocks)
+        run: python3 scripts/sarif-gate.py gitleaks-critical.sarif
+
+  lint-hadolint:
+    name: Dockerfile (Hadolint)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      HADOLINT_IMAGE: hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hadolint (policy .hadolint.yaml)
+        # .hadolint.yaml raises the project's forbidden practices to "error";
+        # --no-fail defers the decision to the gate after the SARIF upload.
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "$HADOLINT_IMAGE" \
+            hadolint -c .hadolint.yaml -f sarif --no-fail Dockerfile > hadolint.sarif
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('hadolint.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: hadolint.sarif
+          category: hadolint
+      - name: Security gate (policy errors)
+        run: python3 scripts/sarif-gate.py hadolint.sarif
+
+  # The image is only built from a Dockerfile that passed the lint policy.
   build:
     name: Build image
     runs-on: ubuntu-24.04
-    needs: [test]
+    needs: [test, lint-hadolint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Build (all platforms)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # The amd64 image is handed to the jobs that analyse the built image
+      # (SBOM now; image scan and DAST later) as a run artifact.
+      - name: Build amd64 image for analysis
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:ci
+          cache-from: type=gha
+      - name: Export image
+        run: docker save "${IMAGE_NAME}:ci" -o image.tar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-amd64
+          path: image.tar
+          retention-days: 1
+
+  # Software Bill of Materials of the built image (inventory, not a gate).
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-24.04
+    needs: [build]
+    env:
+      SYFT_IMAGE: anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-amd64
+      - name: Generate CycloneDX SBOM (Syft)
+        # Packages only (OS + Python); per-file entries are left out.
+        run: |
+          docker run --rm -e SYFT_FILE_METADATA_SELECTION=none -v "$PWD:/w" "$SYFT_IMAGE" \
+            scan docker-archive:/w/image.tar \
+            --source-name "docker.io/krys3x15/${IMAGE_NAME}" --source-version "$GITHUB_SHA" \
+            -o cyclonedx-json=/w/sbom.cdx.json
+      - name: Summary
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import collections, json
+          bom = json.load(open("sbom.cdx.json"))
+          comps = bom.get("components", [])
+          eco = collections.Counter(
+              c["purl"].split(":")[1].split("/")[0] if c.get("purl") else "other" for c in comps)
+          print(f"### SBOM: {bom['bomFormat']} {bom['specVersion']}, {len(comps)} components")
+          print("| ecosystem | components |\n|---|---|")
+          for name, count in eco.most_common():
+              print(f"| {name} | {count} |")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 90
+
+  # CVEs in the OS packages of the built image (Debian). Python libraries are
+  # covered by SCA (OSV-Scanner), so only --pkg-types os here.
+  image-trivy:
+    name: Image (Trivy)
+    runs-on: ubuntu-24.04
+    needs: [build]
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-amd64
+      - name: Trivy (OS packages)
+        # Gate and GitHub Security: only CVEs that already have a fixed package
+        # version (--ignore-unfixed) — those can be resolved by updating the base
+        # image. The full list, including unfixed CVEs, is kept as an artifact.
+        run: |
+          mkdir -p trivy
+          docker run --rm -v "$PWD:/w" -v "$PWD/trivy/cache:/root/.cache/trivy" "$TRIVY_IMAGE" \
+            image --input /w/image.tar --pkg-types os --scanners vuln --ignore-unfixed \
+            --exit-code 0 --format sarif --output /w/trivy/trivy.sarif
+          docker run --rm -v "$PWD:/w" -v "$PWD/trivy/cache:/root/.cache/trivy" "$TRIVY_IMAGE" \
+            image --input /w/image.tar --pkg-types os --scanners vuln --skip-db-update \
+            --exit-code 0 --format json --output /w/trivy/trivy-all.json
+      - name: Map findings to the Dockerfile
+        # The scanned artifact (image.tar) is not a repo file; the base image
+        # is chosen in the Dockerfile, so alerts point there.
+        run: |
+          python3 - <<'PY'
+          import json
+          sarif = json.load(open("trivy/trivy.sarif"))
+          for run in sarif["runs"]:
+              for result in run["results"]:
+                  for loc in result.get("locations", []):
+                      loc["physicalLocation"]["artifactLocation"] = {"uri": "Dockerfile"}
+                      loc["physicalLocation"]["region"] = {"startLine": 1}
+          json.dump(sarif, open("trivy-mapped.sarif", "w"))
+          PY
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('trivy-mapped.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy-mapped.sarif
+          category: trivy
+      - name: Upload full report (including unfixed CVEs)
+        if: always() && hashFiles('trivy/trivy-all.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-report
+          path: trivy/trivy-all.json
+          retention-days: 30
+      - name: Security gate (High/Critical with a fix)
+        run: python3 scripts/sarif-gate.py trivy-mapped.sarif
+
+  # Dynamic scan of the running app: ephemeral k3d cluster + local registry,
+  # the Helm chart deployed with the image from this run, OWASP ZAP baseline.
+  # Needs Checkov: the chart is only deployed after it passed the IaC scan.
+  dast-zap:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-24.04
+    needs: [build, iac-checkov]
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      ZAP_IMAGE: zaproxy/zap-stable:20261008@sha256:7aaa659b0d43078febd82e29bad112285c370727e86ab8340444220e17d9f0d2
+      K3D_VERSION: v5.9.0
+      K3D_SHA256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
+      HELM_VERSION: v4.3.0
+      HELM_SHA256: 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-amd64
+      - name: Load image
+        run: docker load -i image.tar
+      - name: Install k3d and Helm (pinned, checksum-verified)
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSLo "$RUNNER_TEMP/bin/k3d" "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
+          echo "${K3D_SHA256}  $RUNNER_TEMP/bin/k3d" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/k3d"
+          curl -fsSLo "$RUNNER_TEMP/helm.tgz" "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          echo "${HELM_SHA256}  $RUNNER_TEMP/helm.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/helm.tgz" -C "$RUNNER_TEMP" linux-amd64/helm
+          mv "$RUNNER_TEMP/linux-amd64/helm" "$RUNNER_TEMP/bin/helm"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Deploy to ephemeral k3d and run ZAP baseline
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}:ci
+          TAG: ${{ github.sha }}
+          OUT: zap
+        run: scripts/dast-zap.sh
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('zap/zap.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: zap/zap.sarif
+          category: zap
+      - name: Upload ZAP HTML report
+        if: always() && hashFiles('zap/zap.html') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-report
+          path: |
+            zap/zap.html
+            zap/zap.json
+          retention-days: 30
+      - name: Security gate (High/Critical)
+        run: python3 scripts/sarif-gate.py zap/zap.sarif
 
   # Publishing only from main and only after tests, build and ALL security
-  # scanners are green.
+  # scanners are green. The SBOM must exist too (signed with the image, stage 14).
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv, iac-checkov]
+    needs: [test, lint-hadolint, build, sbom, image-trivy, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -208,7 +452,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv, iac-checkov, publish]
+    needs: [test, lint-hadolint, build, sbom, image-trivy, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
