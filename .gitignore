@@ -6,3 +6,5 @@ __pycache__/
 *.sarif
 checkov/
 zap/
+trivy/
+trivy-mapped.sarif

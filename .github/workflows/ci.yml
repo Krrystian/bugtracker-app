@@ -301,6 +301,66 @@ jobs:
           path: sbom.cdx.json
           retention-days: 90
 
+  # CVEs in the OS packages of the built image (Debian). Python libraries are
+  # covered by SCA (OSV-Scanner), so only --pkg-types os here.
+  image-trivy:
+    name: Image (Trivy)
+    runs-on: ubuntu-24.04
+    needs: [build]
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-amd64
+      - name: Trivy (OS packages)
+        # Gate and GitHub Security: only CVEs that already have a fixed package
+        # version (--ignore-unfixed) — those can be resolved by updating the base
+        # image. The full list, including unfixed CVEs, is kept as an artifact.
+        run: |
+          mkdir -p trivy
+          docker run --rm -v "$PWD:/w" -v "$PWD/trivy/cache:/root/.cache/trivy" "$TRIVY_IMAGE" \
+            image --input /w/image.tar --pkg-types os --scanners vuln --ignore-unfixed \
+            --exit-code 0 --format sarif --output /w/trivy/trivy.sarif
+          docker run --rm -v "$PWD:/w" -v "$PWD/trivy/cache:/root/.cache/trivy" "$TRIVY_IMAGE" \
+            image --input /w/image.tar --pkg-types os --scanners vuln --skip-db-update \
+            --exit-code 0 --format json --output /w/trivy/trivy-all.json
+      - name: Map findings to the Dockerfile
+        # The scanned artifact (image.tar) is not a repo file; the base image
+        # is chosen in the Dockerfile, so alerts point there.
+        run: |
+          python3 - <<'PY'
+          import json
+          sarif = json.load(open("trivy/trivy.sarif"))
+          for run in sarif["runs"]:
+              for result in run["results"]:
+                  for loc in result.get("locations", []):
+                      loc["physicalLocation"]["artifactLocation"] = {"uri": "Dockerfile"}
+                      loc["physicalLocation"]["region"] = {"startLine": 1}
+          json.dump(sarif, open("trivy-mapped.sarif", "w"))
+          PY
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('trivy-mapped.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy-mapped.sarif
+          category: trivy
+      - name: Upload full report (including unfixed CVEs)
+        if: always() && hashFiles('trivy/trivy-all.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-report
+          path: trivy/trivy-all.json
+          retention-days: 30
+      - name: Security gate (High/Critical with a fix)
+        run: python3 scripts/sarif-gate.py trivy-mapped.sarif
+
   # Dynamic scan of the running app: ephemeral k3d cluster + local registry,
   # the Helm chart deployed with the image from this run, OWASP ZAP baseline.
   # Needs Checkov: the chart is only deployed after it passed the IaC scan.
@@ -366,7 +426,7 @@ jobs:
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, lint-hadolint, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
+    needs: [test, lint-hadolint, build, sbom, image-trivy, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -392,7 +452,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, lint-hadolint, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
+    needs: [test, lint-hadolint, build, sbom, image-trivy, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
