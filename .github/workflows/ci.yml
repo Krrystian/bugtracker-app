@@ -36,6 +36,37 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
 
+  # --- Security scanners: independent jobs (no "needs" between them), so one
+  # failing scanner never hides the reports of the others. ---------------------
+
+  sast-semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SEMGREP_IMAGE: semgrep/semgrep:1.180.0@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep scan
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan \
+              --config p/python --config p/owasp-top-ten --config p/jwt \
+              --config .semgrep/rules.yml \
+              --metrics=off --sarif-output=semgrep.sarif --text
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+      - name: Security gate (High/Critical)
+        run: python3 scripts/sarif-gate.py semgrep.sarif
+
   build:
     name: Build image
     runs-on: ubuntu-24.04
@@ -54,12 +85,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Publishing only from main and only after all previous jobs are green.
-  # TEMPORARY (stage 4): no security scanners yet; they become required gates in stage 11.
+  # Publishing only from main and only after tests, build and ALL security
+  # scanners are green.
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build]
+    needs: [test, build, sast-semgrep]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -85,7 +116,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, publish]
+    needs: [test, build, sast-semgrep, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
