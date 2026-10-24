@@ -130,6 +130,17 @@ scripts/update-webhook-url.sh     # ustawia nowy adres w GitHub, sekret z klastr
 
 Dostawy: repo GitOps → Settings → Webhooks → Recent Deliveries (lub `gh api repos/Krrystian/bugtracker-gitops/hooks/<id>/deliveries`).
 
+## Skanery bezpieczeństwa i SBOM (etap 11)
+
+Każdy push/PR uruchamia niezależne joby skanerów; raporty SARIF trafiają do **Security → Code scanning**, a `scripts/sarif-gate.py` przerywa job przy znaleziskach High/Critical. Publikacja obrazu wymaga zielonych wszystkich jobów. Szczegóły i wyniki: `docs/scan-results.md`, podatności demonstracyjne: `docs/vulnerabilities.md`.
+
+| Job | Narzędzie | Co sprawdza |
+|---|---|---|
+| SAST (Semgrep) | Semgrep + `.semgrep/rules.yml` | kod aplikacji |
+| SCA (OSV-Scanner) | OSV-Scanner | biblioteki z lock files |
+| IaC (Checkov) | Checkov | wykres Helm, `k8s/`, `infra/` |
+| SBOM (CycloneDX) | Syft | spis składników obrazu — artefakt `sbom-cyclonedx` w przebiegu (nie bramka) |
+
 ## Przepływ aplikacja → GitOps (etap 10)
 
 ```

@@ -6,7 +6,8 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 |---|---|---|---|---|
 | 11a | Semgrep 1.180.0 | SAST | ✅ 0 znalezisk | `vuln/sast-code` ❌ (2× High, 1× Medium) |
 | 11b | OSV-Scanner 2.6.0 | SCA | ✅ 0 znalezisk | `vuln/sca-deps` ❌ ([run 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495), critical CVE-2018-20060) — test T1 |
-| 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged`, `vuln/helm-no-netpol` *(po scaleniu)* |
+| 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
+| 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
 
 ## 11a: Semgrep (SAST)
 
@@ -67,3 +68,20 @@ Wyjątki są adnotacjami `checkov.io/skip*` przy konkretnym zasobie, z uzasadnie
 **Pułapka znaleziona przy wdrażaniu:** gdy Checkov nie potrafi wyrenderować wykresu (np. brak pliku values), wypisuje tylko ostrzeżenie i kończy sukcesem — wykres nie byłby sprawdzony. Krok CI zamienia to na błąd (`Failed processing helm chart` lub brak „helm scan results” → `exit 1`).
 
 Po zmianach: `helm` 184 ✅ / 0 ❌ / 2 wyjątki, `kubernetes` 274 ✅ / 0 ❌ / 3 wyjątki. Test na wykresie z `privileged: true` i `runAsUser: 0`: 8 znalezisk High (CKV_K8S_16, 20, 22, 23, 40) → bramka `exit 1`.
+
+**Wyniki branchy demonstracyjnych (2026-10-24):** w obu pada wyłącznie `IaC (Checkov)` na kroku bramki; `Unit tests`, `SAST (Semgrep)`, `SCA (OSV-Scanner)`, `Build image` zielone, publikacja pominięta.
+
+| Branch | Najważniejsze alerty (plik `charts/bugtracker/templates/…`) | Realne ryzyko |
+|---|---|---|
+| `vuln/helm-privileged` | CKV_K8S_16 privileged, CKV_K8S_23 root, CKV_K8S_20 allowPrivilegeEscalation, CKV_K8S_22 zapisywalny root FS, CKV_K8S_28/37 capabilities (NET_RAW), CKV_K8S_31 seccomp, CKV_K8S_11/13 brak limitów CPU/RAM — `deployment.yaml`, `postgres-deployment.yaml` | **tak**: przejęcie kontenera `privileged` = przejęcie węzła (dostęp do urządzeń i jądra hosta); brak limitów pozwala jednemu podowi zagłodzić węzeł |
+| `vuln/helm-no-netpol` | CKV2_K8S_6 pody bez NetworkPolicy — `deployment.yaml`, `postgres-deployment.yaml` | **tak**: każdy pod w klastrze może łączyć się bezpośrednio z bazą; przejęta aplikacja może wysyłać dane dokądkolwiek |
+
+**Wyjątki w GitHub Security:** SARIF Checkova oznacza pominięte checki polem `suppressions` (z uzasadnieniem), ale GitHub pokazuje je jako otwarte alerty. 5 alertów (CKV_K8S_43 ×2, CKV_K8S_40 ×2, CKV_K8S_15) zamknięto ręcznie w GitHub jako *won't fix* z tym samym uzasadnieniem (decyzja właściciela projektu). Na `main`: 0 otwartych alertów.
+
+## 11d: SBOM (CycloneDX)
+
+**Czym jest SBOM:** *Software Bill of Materials* — spis wszystkich składników obrazu (pakiety systemu i biblioteki), z wersjami, licencjami i identyfikatorami `purl`. Nie jest bramką: to inwentarz, dzięki któremu po ogłoszeniu nowej podatności (np. w `openssl`) od razu wiadomo, które obrazy ją zawierają, bez ponownego skanowania. W etapie 14 SBOM jest podpisywany Cosignem jako *attestation* obrazu.
+
+**Konfiguracja:** job `SBOM (CycloneDX)` — Syft 1.54.1 skanuje obraz `linux/amd64` zbudowany w jobie `Build image` (przekazany jako artefakt `image-amd64`); tylko pakiety (`SYFT_FILE_METADATA_SELECTION=none` — bez 2751 wpisów pojedynczych plików). Wynik: artefakt przebiegu **`sbom-cyclonedx`** (`sbom.cdx.json`, przechowywany 90 dni) + podsumowanie w zakładce przebiegu. `Push to Docker Hub` wymaga istnienia SBOM.
+
+**Zawartość (obraz z `main`, lokalnie):** CycloneDX 1.7, **137 komponentów**: 87 pakietów Debiana (`pkg:deb/...`, np. `openssl 3.5.7-1~deb13u3`), 36 bibliotek Pythona (`pkg:pypi/...`, np. `fastapi 0.159.0` MIT), interpreter `python 3.12.15`, system `debian 13`.
