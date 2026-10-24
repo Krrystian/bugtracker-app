@@ -8,8 +8,8 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 |---|---|---|---|---|---|---|
 | VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | Gitleaks | 11f | planowany |
 | VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | Hadolint | 11g | planowany |
-| VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | **utworzony** |
-| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | OSV-Scanner (SCA), test T1 | 11b | planowany |
+| VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
+| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | **utworzony** |
 | VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | Trivy `image` | 11h | planowany |
 | VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | Checkov, test T2 | 11c | planowany |
 | VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | Checkov / test w klastrze | 11c, 14 | planowany |
@@ -35,3 +35,13 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
   - wszystkie zapytania przez ORM SQLAlchemy (`select(...)`, parametry wiązane), brak `text()` z danymi użytkownika,
   - Jinja2 z `autoescape=True`, brak `|safe` i `Markup()` na danych użytkownika, dodatkowo ścisłe CSP (`default-src 'none'`),
   - hasła hashowane Argon2id, brak MD5/SHA1 w kontekście bezpieczeństwa.
+
+---
+
+## VULN-04: przestarzała biblioteka z krytyczną CVE (SCA)
+
+- **Branch:** `vuln/sca-deps`
+- **Bramka:** job `SCA (OSV-Scanner)`. Pozostałe joby zielone (test T1).
+- **Co psujemy:** do `requirements.in` (i lock file `requirements.txt`) dodany klient HTTP **`urllib3==1.22`** (2017 r.).
+- **Najważniejsza podatność:** [CVE-2018-20060](https://osv.dev/PYSEC-2018-32) / PYSEC-2018-32, **CVSS 9.8 (Critical)** — przy przekierowaniu na inny host urllib3 przekazuje dalej nagłówek `Authorization`, więc dane logowania mogą trafić do obcego serwera (CWE-200). Wersja ma też kilka podatności High (CVSS 8.9).
+- **Poprawka w `main`:** biblioteka nieużywana — nie występuje; wszystkie zależności (także przechodnie) przypięte w lock files i skanowane przy każdym PR. Gdyby była potrzebna: `urllib3>=2.x` (aktualna wersja bez znanych podatności).

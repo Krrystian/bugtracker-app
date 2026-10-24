@@ -155,6 +155,8 @@ curl localhost:8000/health
 
 Testy: `.venv/bin/pytest -q` (SQLite w pamięci, nie wymagają bazy).
 
+Zależności: biblioteki bezpośrednie w `requirements.in` / `requirements-dev.in`; `requirements.txt` i `requirements-dev.txt` to **generowane lock files** (wszystkie pakiety, także przechodnie, z dokładnymi wersjami). Po zmianie `.in`: `scripts/lock-deps.sh` (wymaga Dockera).
+
 ## Interfejs webowy
 
 Po uruchomieniu otwórz **http://localhost:8000** (przekierowuje na `/ui`): rejestracja, logowanie, lista zgłoszeń z filtrem statusu, dodawanie, edycja i usuwanie (tylko własnych zgłoszeń).
