@@ -13,7 +13,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 | VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | Trivy `image` | 11h | planowany |
 | VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | 11c | ✅ zatrzymany przez Checkov |
 | VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | 11c, 14 | ✅ zatrzymany przez Checkov (klaster: etap 14) |
-| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | OWASP ZAP (DAST) | 11e | planowany |
+| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | **utworzony** |
 | VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | Kyverno (admission), test T3 | 14 | planowany |
 | VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | Gitleaks na repo GitOps | 12 | planowany |
 
@@ -65,3 +65,16 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Bramka:** job `IaC (Checkov)` (CKV2_K8S_6); weryfikacja w klastrze — etap 14.
 - **Co psujemy:** `networkPolicy.enabled: false` — brak polityk default-deny; każdy pod w klastrze ma dostęp do bazy i aplikacji (z pominięciem Traefika), aplikacja ma nieograniczony ruch wychodzący (CWE-923).
 - **Poprawka w `main`:** `networkPolicy.enabled: true` — default-deny; aplikacja przyjmuje ruch tylko z Traefika, baza tylko z aplikacji, ruch wychodzący aplikacji tylko do bazy i DNS (zweryfikowane w k3d w etapie 6).
+
+---
+
+## VULN-08: błędnie skonfigurowane reverse proxy (DAST)
+
+- **Branch:** `vuln/dast-runtime`
+- **Bramka:** job `DAST (OWASP ZAP)` (polityka `.zap/rules.tsv`). Pozostałe joby zielone — kod aplikacji się nie zmienia, więc Semgrep i testy jednostkowe nie mają czego wykryć; Checkov nie ocenia nagłówków HTTP.
+- **Co psujemy:** `charts/bugtracker/templates/proxy-headers.yaml` — middleware Traefika (`headers.customResponseHeaders`) podpięty do Ingress adnotacją `traefik.ingress.kubernetes.io/router.middlewares`:
+  - usuwa nagłówki ustawiane przez aplikację: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` (CWE-693, CWE-1021),
+  - ustawia `Server: uvicorn/0.54.0 (CPython 3.12.15; Debian 13)` — ujawnienie oprogramowania i wersji (CWE-497).
+- **Dlaczego to klasa DAST:** błąd istnieje wyłącznie w odpowiedziach działającego systemu (aplikacja nadal ustawia nagłówki — gubi je proxy przed nią); widać go tylko, wysyłając żądania HTTP.
+- **Wykrywa:** ZAP 10038, 10020, 10021, 10036 (`FAIL` w polityce).
+- **Poprawka w `main`:** brak middleware modyfikującego nagłówki; aplikacja ustawia CSP (`default-src 'none'; …`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; nagłówek `Server` bez wersji.

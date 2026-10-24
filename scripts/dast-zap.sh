@@ -49,6 +49,12 @@ docker push -q "localhost:${REG_PORT}/bugtracker:${TAG}"
 echo "::endgroup::"
 
 echo "::group::deploy chart"
+# k3s installs the Traefik CRDs asynchronously; wait so charts may use them.
+for _ in $(seq 1 60); do
+  kubectl --context "$CTX" get crd middlewares.traefik.io >/dev/null 2>&1 && break
+  sleep 2
+done
+kubectl --context "$CTX" wait --for=condition=established crd/middlewares.traefik.io --timeout=60s
 kubectl --context "$CTX" create namespace bugtracker
 kubectl --context "$CTX" label namespace bugtracker pod-security.kubernetes.io/enforce=restricted
 # One-off random secrets for this throwaway cluster; never stored anywhere.
@@ -78,16 +84,18 @@ echo "::endgroup::"
 echo "::group::ZAP baseline scan"
 mkdir -p "$OUT"
 chmod 777 "$OUT"   # the ZAP container runs as its own user
+cp .zap/rules.tsv "$OUT/rules.tsv"
 set +e
-# -I: warnings do not change the exit code; the SARIF gate decides.
+# -c: rule policy (FAIL = blocking); -I: warnings do not change the exit code.
 docker run --rm --network "$NETWORK" -v "$PWD/$OUT:/zap/wrk:rw" "$ZAP_IMAGE" \
-  zap-baseline.py -t "$target" -J zap.json -r zap.html -I
+  zap-baseline.py -t "$target" -c rules.tsv -J zap.json -r zap.html -I
 rc=$?
 set -e
 echo "::endgroup::"
-# 0 = no alerts, 2 = warnings (with -I those exit 0); other codes are tool errors.
-if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+# 0 = clean, 1 = policy FAIL rules hit, 2 = warnings: the SARIF gate decides
+# after the report is uploaded. Anything else is a tool error.
+if [ "$rc" -gt 2 ]; then
   echo "::error::ZAP baseline failed (exit $rc)"; exit "$rc"
 fi
 
-python3 scripts/zap-to-sarif.py "$OUT/zap.json" "$OUT/zap.sarif"
+python3 scripts/zap-to-sarif.py "$OUT/zap.json" "$OUT/zap.sarif" --policy .zap/rules.tsv

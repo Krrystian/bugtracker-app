@@ -8,7 +8,7 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 | 11b | OSV-Scanner 2.6.0 | SCA | ✅ 0 znalezisk | `vuln/sca-deps` ❌ ([run 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495), critical CVE-2018-20060) — test T1 |
 | 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
 | 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
-| 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) | ✅ 0 Low/Medium/High (58 reguł OK, 3 informacyjne) | `vuln/dast-runtime` *(kolejny krok)* |
+| 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK, 3 informacyjne) | `vuln/dast-runtime` *(po scaleniu polityki)* |
 
 ## 11a: Semgrep (SAST)
 
@@ -103,3 +103,7 @@ Po zmianach: `helm` 184 ✅ / 0 ❌ / 2 wyjątki, `kubernetes` 274 ✅ / 0 ❌ /
 **Ustalenia przy wdrażaniu (lokalnie):** `--registry-create <nazwa>` nie dodaje przedrostka `k3d-` (nazwa w klastrze = `dast-registry:5050`); load balancer k3d przekazuje tylko porty podane w `--port` (bez tego brak dostępu do Traefika); przy błędzie skrypt wypisuje pody, zdarzenia i logi przed usunięciem klastra.
 
 **Wynik `main` (lokalnie, obraz `e68c74c`):** 58 reguł bez uwag, 0 Low/Medium/High; 3 alerty *Informational* (wykryty formularz logowania, odpowiedzi z ciasteczkiem sesji, „Cookie Poisoning” — parametr formularza odbity w nazwie/wartości ciasteczka CSRF) — opisują działanie aplikacji, nie podatności. Nagłówki bezpieczeństwa (CSP, `X-Frame-Options`, `nosniff`), flagi ciasteczek (`HttpOnly`, `SameSite=Strict`) i brak ujawniania wersji — bez uwag.
+
+**Polityka reguł ZAP (`.zap/rules.tsv`) — decyzja właściciela projektu (2026-10-24):** skan pasywny ZAP ocenia błędy konfiguracji odpowiedzi (nagłówki, ciasteczka) najwyżej jako *Medium*, więc ogólna bramka High/Critical nigdy by ich nie zatrzymała. Zamiast obniżać próg dla wszystkich alertów, projekt ma **jawną listę reguł, które blokują** (`FAIL`): brak CSP (10038), brak ochrony przed clickjackingiem (10020), brak `X-Content-Type-Options` (10021), ujawnianie wersji w `Server` (10036) i `X-Powered-By` (10037), ciasteczko bez `HttpOnly` (10010) i `SameSite` (10054), brak tokenów anty-CSRF (10202). `scripts/zap-to-sarif.py --policy` zgłasza je jako `error` / 8.0; pozostałe alerty ZAP są tylko raportowane. Celowo pominięto 10011 (ciasteczko bez `Secure`) — tymczasowy klaster DAST działa po HTTP; produkcyjnie `COOKIE_SECURE=true` za TLS. To jedyne odstępstwo od reguły High/Critical z CLAUDE.md i dotyczy tylko ZAP.
+
+Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.

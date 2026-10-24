@@ -6,13 +6,17 @@ ZAP risk -> SARIF level / security-severity:
   2 Medium        -> warning  / 5.0
   1 Low           -> note     / 3.0
   0 Informational -> note     / 0.0
+Rules marked FAIL in the policy file (--policy, zap-baseline rules.tsv format)
+are reported as "error" / 8.0 regardless of their ZAP risk: the project decided
+that these must never reach production.
 
 Findings are about a running web app, not a source file, so each result points
 at the scanned URL path (logical location) and at the chart that was deployed.
 
-Usage: zap-to-sarif.py zap.json zap.sarif
+Usage: zap-to-sarif.py zap.json zap.sarif [--policy .zap/rules.tsv]
 """
 
+import argparse
 import html
 import json
 import re
@@ -23,12 +27,29 @@ LEVELS = {3: ("error", "8.0"), 2: ("warning", "5.0"), 1: ("note", "3.0"), 0: ("n
 DEPLOYED_ARTIFACT = "charts/bugtracker/values.yaml"
 
 
+def failing_rules(path: str | None) -> set[str]:
+    if not path:
+        return set()
+    rules = set()
+    for line in open(path, encoding="utf-8"):
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 2 and not parts[0].startswith("#") and parts[1].strip() == "FAIL":
+            rules.add(parts[0].strip())
+    return rules
+
+
 def text(value: str) -> str:
     return re.sub(r"<[^>]+>", "", html.unescape(value or "")).strip()
 
 
 def main() -> int:
-    src, dst = sys.argv[1], sys.argv[2]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("src")
+    parser.add_argument("dst")
+    parser.add_argument("--policy")
+    args = parser.parse_args()
+    src, dst = args.src, args.dst
+    policy_fail = failing_rules(args.policy)
     report = json.load(open(src, encoding="utf-8"))
     version = report.get("@version", "unknown")
 
@@ -38,9 +59,13 @@ def main() -> int:
         for alert in site.get("alerts", []):
             risk = int(alert.get("riskcode", 0))
             level, severity = LEVELS.get(risk, ("note", "0.0"))
+            if str(alert.get("pluginid")) in policy_fail:
+                level, severity = "error", "8.0"
             rule_id = f"zap-{alert.get('pluginid')}"
             name = alert.get("alert") or alert.get("name") or rule_id
             tags = ["security", "dast"]
+            if str(alert.get("pluginid")) in policy_fail:
+                tags.append("policy-fail")
             if alert.get("cweid") not in (None, "", "-1", "0"):
                 tags.append(f"CWE-{alert['cweid']}")
             rules[rule_id] = {
