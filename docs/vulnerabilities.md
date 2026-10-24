@@ -6,14 +6,14 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 
 | ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Etap | Status |
 |---|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | Gitleaks | 11f | planowany |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | Hadolint | 11g | planowany |
+| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | 11f | ✅ zatrzymany przez Gitleaks |
+| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | 11g | ✅ zatrzymany przez Hadolint |
 | VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
 | VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | ✅ zatrzymany przez OSV-Scanner |
-| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | Trivy `image` | 11h | planowany |
+| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | 11h | **utworzony** (po scaleniu Trivy) |
 | VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | 11c | ✅ zatrzymany przez Checkov |
 | VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | 11c, 14 | ✅ zatrzymany przez Checkov (klaster: etap 14) |
-| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | **utworzony** |
+| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
 | VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | Kyverno (admission), test T3 | 14 | planowany |
 | VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | Gitleaks na repo GitOps | 12 | planowany |
 
@@ -78,3 +78,30 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Dlaczego to klasa DAST:** błąd istnieje wyłącznie w odpowiedziach działającego systemu (aplikacja nadal ustawia nagłówki — gubi je proxy przed nią); widać go tylko, wysyłając żądania HTTP.
 - **Wykrywa:** ZAP 10038, 10020, 10021, 10036 (`FAIL` w polityce).
 - **Poprawka w `main`:** brak middleware modyfikującego nagłówki; aplikacja ustawia CSP (`default-src 'none'; …`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; nagłówek `Server` bez wersji.
+
+---
+
+## VULN-01: zakodowany na sztywno klucz API (sekrety)
+
+- **Branch:** `vuln/secret-leak`
+- **Bramka:** job `Secrets (Gitleaks)`. Pozostałe joby zielone.
+- **Co psujemy:** `app/payments.py` — `PAYMENT_API_KEY = "<losowe 48 znaków hex>"` (CWE-798). Wartość wygenerowana `openssl rand -hex 24` — **sztuczna, nie działa w żadnej usłudze**; nie była wypisywana w logach ani w dokumentacji.
+- **Wykrywa:** Gitleaks `generic-api-key` (oznaczony jako Critical przez `scripts/sarif-set-severity.py`).
+- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret, od etapu 12 SealedSecret), lokalnie `.env` w `.gitignore`.
+
+---
+
+## VULN-02: złe praktyki w Dockerfile
+
+- **Branch:** `vuln/dockerfile-bad-practices`
+- **Bramka:** job `Dockerfile (Hadolint)` (polityka `.hadolint.yaml`). `Build image` i joby zależne (SBOM, Trivy, DAST) są pominięte — obraz nie powstaje z Dockerfile, który nie przeszedł polityki. Semgrep pomija Dockerfile (`--exclude=Dockerfile`) — jeden problem, jedna bramka.
+- **Co psujemy:** `FROM python:latest` w obu etapach (DL3007), `apt-get install -y curl` bez wersji (DL3008), `pip install httpie` bez wersji (DL3013), `curl … | python -` bez `pipefail` (DL4006), `USER root` (DL3002).
+- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.15-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
+
+## VULN-05: obraz bazowy z podatnymi pakietami systemu
+
+- **Branch:** `vuln/image-cve`
+- **Bramka:** job `Image (Trivy)`. Pozostałe joby zielone (obraz przypięty tagiem i digestem — Hadolint go akceptuje; aplikacja działa — DAST przechodzi).
+- **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
+- **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
+- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.15-slim-trixie`, Debian 13.7) przypięty digestem; 0 CVE z dostępną poprawką.

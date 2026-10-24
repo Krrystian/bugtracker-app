@@ -139,8 +139,11 @@ Każdy push/PR uruchamia niezależne joby skanerów; raporty SARIF trafiają do 
 | SAST (Semgrep) | Semgrep + `.semgrep/rules.yml` | kod aplikacji |
 | SCA (OSV-Scanner) | OSV-Scanner | biblioteki z lock files |
 | IaC (Checkov) | Checkov | wykres Helm, `k8s/`, `infra/` |
+| Image (Trivy) | Trivy | CVE w pakietach systemu obrazu (z dostępną poprawką; pełna lista w artefakcie `trivy-report`) |
 | SBOM (CycloneDX) | Syft | spis składników obrazu — artefakt `sbom-cyclonedx` w przebiegu (nie bramka) |
-| DAST (OWASP ZAP) | ZAP baseline | działająca aplikacja w tymczasowym k3d (`scripts/dast-zap.sh`, można uruchomić lokalnie) — raport HTML w artefakcie `zap-report` |
+| Dockerfile (Hadolint) | Hadolint + polityka `.hadolint.yaml` | dobre praktyki Dockerfile; build obrazu dopiero po przejściu |
+| Secrets (Gitleaks) | Gitleaks | sekrety w całej historii git (każdy wyciek = Critical) |
+| DAST (OWASP ZAP) | ZAP baseline + polityka `.zap/rules.tsv` | działająca aplikacja w tymczasowym k3d (`scripts/dast-zap.sh`, można uruchomić lokalnie) — raport HTML w artefakcie `zap-report` |
 
 ## Przepływ aplikacja → GitOps (etap 10)
 
