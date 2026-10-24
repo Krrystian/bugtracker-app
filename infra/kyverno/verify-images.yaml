@@ -22,10 +22,22 @@ metadata:
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
 spec:
-  validationActions: [Audit]
+  validationActions: [Deny]
   failurePolicy: Fail
+  # Only Pods are verified and mutated (tag -> digest). Autogen for Deployments
+  # etc. is off: mutating the Deployment would make it differ from Git and
+  # Argo CD would report OutOfSync and keep re-syncing.
+  autogen:
+    podControllers:
+      controllers: []
   webhookConfiguration:
     timeoutSeconds: 30   # signature + attestation verification takes ~10 s
+  # Authenticated, read-only access to Docker Hub: anonymous requests hit the
+  # pull rate limit (seen on 2026-10-24) and, with failurePolicy Fail, new pods
+  # could not be created. The secret (docker-registry type, read-only token) is
+  # created out of band in the kyverno namespace and never stored in Git.
+  credentials:
+    secrets: [dockerhub-readonly]
   matchConstraints:
     resourceRules:
       - apiGroups: [""]
