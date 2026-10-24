@@ -70,7 +70,7 @@ Najważniejsze wartości (`charts/bugtracker/values.yaml`):
 | `image.repository` | `krys3x15/bugtracker` | repozytorium obrazu |
 | `image.tag` | *(wymagany)* | pełny SHA commita; pusty lub `latest` → błąd renderowania |
 | `replicaCount` | `2` | liczba replik aplikacji |
-| `existingSecret` | `bugtracker-secrets` | sekret z kluczami `db-password`, `secret-key` (tworzony poza chartem) |
+| `existingSecret` | `bugtracker-secrets` | sekret z kluczami `db-password`, `secret-key` (tworzony poza chartem); montowany jako **pliki** w `/run/secrets/bugtracker` (aplikacja: `SECRETS_DIR`, PostgreSQL: `POSTGRES_PASSWORD_FILE`), nie jako zmienne środowiskowe |
 | `ingress.host` / `ingress.className` | `localhost` / `traefik` | adres i kontroler Ingress |
 | `database.enabled` | `true` | PostgreSQL w klastrze (PVC zachowywany po `helm uninstall`) |
 | `networkPolicy.enabled` | `true` | default-deny; aplikacja tylko z Traefika, baza tylko z aplikacji, brak wyjścia do internetu |
@@ -130,6 +130,21 @@ scripts/update-webhook-url.sh     # ustawia nowy adres w GitHub, sekret z klastr
 
 Dostawy: repo GitOps → Settings → Webhooks → Recent Deliveries (lub `gh api repos/Krrystian/bugtracker-gitops/hooks/<id>/deliveries`).
 
+## Skanery bezpieczeństwa i SBOM (etap 11)
+
+Każdy push/PR uruchamia niezależne joby skanerów; raporty SARIF trafiają do **Security → Code scanning**, a `scripts/sarif-gate.py` przerywa job przy znaleziskach High/Critical. Publikacja obrazu wymaga zielonych wszystkich jobów. Szczegóły i wyniki: `docs/scan-results.md`, podatności demonstracyjne: `docs/vulnerabilities.md`.
+
+| Job | Narzędzie | Co sprawdza |
+|---|---|---|
+| SAST (Semgrep) | Semgrep + `.semgrep/rules.yml` | kod aplikacji |
+| SCA (OSV-Scanner) | OSV-Scanner | biblioteki z lock files |
+| IaC (Checkov) | Checkov | wykres Helm, `k8s/`, `infra/` |
+| Image (Trivy) | Trivy | CVE w pakietach systemu obrazu (z dostępną poprawką; pełna lista w artefakcie `trivy-report`) |
+| SBOM (CycloneDX) | Syft | spis składników obrazu — artefakt `sbom-cyclonedx` w przebiegu (nie bramka) |
+| Dockerfile (Hadolint) | Hadolint + polityka `.hadolint.yaml` | dobre praktyki Dockerfile; build obrazu dopiero po przejściu |
+| Secrets (Gitleaks) | Gitleaks | sekrety w całej historii git (każdy wyciek = Critical) |
+| DAST (OWASP ZAP) | ZAP baseline + polityka `.zap/rules.tsv` | działająca aplikacja w tymczasowym k3d (`scripts/dast-zap.sh`, można uruchomić lokalnie) — raport HTML w artefakcie `zap-report` |
+
 ## Przepływ aplikacja → GitOps (etap 10)
 
 ```
@@ -155,6 +170,8 @@ curl localhost:8000/health
 
 Testy: `.venv/bin/pytest -q` (SQLite w pamięci, nie wymagają bazy).
 
+Zależności: biblioteki bezpośrednie w `requirements.in` / `requirements-dev.in`; `requirements.txt` i `requirements-dev.txt` to **generowane lock files** (wszystkie pakiety, także przechodnie, z dokładnymi wersjami). Po zmianie `.in`: `scripts/lock-deps.sh` (wymaga Dockera).
+
 ## Interfejs webowy
 
 Po uruchomieniu otwórz **http://localhost:8000** (przekierowuje na `/ui`): rejestracja, logowanie, lista zgłoszeń z filtrem statusu, dodawanie, edycja i usuwanie (tylko własnych zgłoszeń).
@@ -173,7 +190,7 @@ Strony renderuje serwer (Jinja2), bez JavaScriptu.
 
 ## Konfiguracja (zmienne środowiskowe)
 
-`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki), opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`) i `COOKIE_SECURE=true` (gdy aplikacja działa po HTTPS).
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki); sekrety mogą też pochodzić z plików `<SECRETS_DIR>/db_password` i `<SECRETS_DIR>/secret_key`, opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`) i `COOKIE_SECURE=true` (gdy aplikacja działa po HTTPS).
 
 ## Zabezpieczenia w wersji secure
 
