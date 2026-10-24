@@ -6,6 +6,9 @@ ZAP risk -> SARIF level / security-severity:
   2 Medium        -> warning  / 5.0
   1 Low           -> note     / 3.0
   0 Informational -> note     / 0.0
+Informational alerts (risk 0) are left out of the SARIF unless the policy marks
+them FAIL: ZAP itself does not consider them vulnerabilities (e.g. "a login form
+was found"); they stay in the full HTML/JSON report.
 Rules marked FAIL in the policy file (--policy, zap-baseline rules.tsv format)
 are reported as "error" / 8.0 regardless of their ZAP risk: the project decided
 that these must never reach production.
@@ -58,6 +61,8 @@ def main() -> int:
     for site in report.get("site", []):
         for alert in site.get("alerts", []):
             risk = int(alert.get("riskcode", 0))
+            if risk == 0 and str(alert.get("pluginid")) not in policy_fail:
+                continue
             level, severity = LEVELS.get(risk, ("note", "0.0"))
             if str(alert.get("pluginid")) in policy_fail:
                 level, severity = "error", "8.0"
