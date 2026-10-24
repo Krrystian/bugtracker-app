@@ -173,7 +173,7 @@ Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium Gi
 ## Podpisy obrazów i admission control (etap 14)
 
 - **Cosign (CI):** job `Push to Docker Hub` podpisuje obraz **po digeście** kluczem z sekretów `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD`, dołącza SBOM (CycloneDX) jako podpisane poświadczenie (*attestation*) i weryfikuje oba kluczem publicznym `cosign.pub` (w repozytorium).
-- **Kyverno (klaster):** `infra/kyverno/verify-images.yaml` — w namespace'ach `bugtracker` i `sandbox` pod może uruchomić wyłącznie obraz podpisany kluczem projektu (wyjątek: PostgreSQL przypięty digestem); w trybie Enforce tag zamieniany na zweryfikowany digest.
+- **Kyverno (klaster):** `infra/kyverno/verify-images.yaml` — `ImageValidatingPolicy`: w namespace'ach `bugtracker` i `sandbox` pod może uruchomić wyłącznie obraz z podpisem **i** podpisaną atestacją SBOM (CycloneDX) kluczem projektu (wyjątek: PostgreSQL przypięty digestem); tag zamieniany na zweryfikowany digest. Starszy typ `ClusterPolicy` (`verifyImages`) nie odczytuje podpisów w formacie cosign v3.
 
 ```bash
 # instalacja Kyverno v1.19.1 (SHA-256 zgodny z digestem zasobu wydania na GitHub)

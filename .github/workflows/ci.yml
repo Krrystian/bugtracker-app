@@ -484,10 +484,22 @@ jobs:
         env:
           IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.push.outputs.digest }}
+        # Signatures and attestations are separate OCI referrers; Docker Hub lists
+        # a freshly pushed referrer with a delay, so the lookup is retried. The
+        # check itself is unchanged: without a verified attestation the job fails.
         run: |
-          cosign verify --key cosign.pub "${IMAGE}@${DIGEST}" > /dev/null
-          cosign verify-attestation --key cosign.pub --type cyclonedx "${IMAGE}@${DIGEST}" > /dev/null
-          echo "signature and SBOM attestation verified with cosign.pub"
+          ref="${IMAGE}@${DIGEST}"
+          verify() {  # verify <description> <cosign args...>
+            local what=$1; shift
+            for delay in 0 5 10 20 40; do
+              sleep "$delay"
+              if cosign "$@" "$ref" > /dev/null; then echo "verified: $what"; return 0; fi
+              echo "::warning::$what not verified yet, retrying"
+            done
+            echo "::error::$what could not be verified with cosign.pub"; return 1
+          }
+          verify "image signature" verify --key cosign.pub
+          verify "SBOM attestation (CycloneDX)" verify-attestation --key cosign.pub --type cyclonedx
 
   # Tell the GitOps repo about the new image. It commits the tag to its
   # "development" branch; deployment still needs a manual PR to its "main".
