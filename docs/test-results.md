@@ -2,11 +2,31 @@
 
 | Test | Status | Data |
 |---|---|---|
-| T1 Blokada i raportowanie podatności kodu (SAST/SCA) | ⏳ etap 11/13 | — |
+| T1 Blokada i raportowanie podatności kodu (SAST/SCA) | ✅ zaliczony | 2026-10-24 |
 | T2 Centralizacja raportów (SARIF) | ⏳ etap 11 | — |
 | T3 Integralność i weryfikacja podpisów Cosign | ⏳ etap 14 | — |
 | T4 Brama wdrożeniowa | ✅ zaliczony | 2026-10-24 |
 | T5 Szczelność sekretów | ⏳ etap 12 | — |
+
+## T1 Blokada i raportowanie podatności kodu (SAST/SCA)
+
+**Cel:** przestarzała biblioteka z krytyczną CVE (OSV.dev) przerywa pipeline, a w Security → Code scanning pojawia się raport wskazujący bibliotekę.
+
+**Przebieg (2026-10-24):** push branchu `vuln/sca-deps` (VULN-04: `urllib3==1.22` w `requirements.in`, lock files zregenerowane `scripts/lock-deps.sh` — zmiana dokładnie o tę jedną linię).
+
+**Dowód:** [przebieg 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495)
+
+| Job | Wynik |
+|---|---|
+| Unit tests | ✅ |
+| SAST (Semgrep) | ✅ |
+| **SCA (OSV-Scanner)** | ❌ — skan ✅, upload SARIF ✅, **krok „Security gate (High/Critical)” ❌** |
+| Build image | ✅ |
+| Push to Docker Hub / Notify GitOps repo | ⏭ pominięte — obraz **nie** trafił do Docker Hub |
+
+Security → Code scanning (gałąź `vuln/sca-deps`, narzędzie `osv-scanner`): 48 alertów, w tym **critical CVE-2018-20060 — „Package 'urllib3@1.22' is vulnerable to 'CVE-2018-20060' (also known as 'PYSEC-2018-32', 'GHSA-www2-v7xj-xrc6')”** oraz alerty High dla tej samej biblioteki. Na `main`: 0 alertów osv-scanner.
+
+**Wynik:** ✅ zaliczony.
 
 ## T4 Brama wdrożeniowa
 
