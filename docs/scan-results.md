@@ -16,7 +16,7 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 
 **Czym jest SAST:** analiza statyczna kodu źródłowego, bez uruchamiania aplikacji. Skaner szuka wzorców typowych błędów: sklejania SQL z danymi użytkownika, wyłączonego escapowania HTML, słabej kryptografii, sekretów w kodzie.
 
-**Konfiguracja:** zestawy reguł `p/python`, `p/owasp-top-ten`, `p/jwt` (564 reguły) + reguły projektu `.semgrep/rules.yml` (XSS w szablonach Jinja2, `Markup()` na zmiennych; publiczne zestawy nie obejmują szablonów renderowanych przez FastAPI).
+**Konfiguracja:** zestawy reguł `p/python`, `p/owasp-top-ten`, `p/jwt` (564 reguły) + reguły projektu `.semgrep/rules.yml`; `--exclude=Dockerfile` — Dockerfile należy do joba Hadolint (decyzja 2026-10-24: `p/owasp-top-ten` zawiera regułę `last-user-is-root`, identyczną z blokującą DL3002 Hadolinta; jeden problem = jedna bramka) (XSS w szablonach Jinja2, `Markup()` na zmiennych; publiczne zestawy nie obejmują szablonów renderowanych przez FastAPI).
 
 **Wyniki (2026-10-24):**
 

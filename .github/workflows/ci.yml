@@ -52,11 +52,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Semgrep scan
+        # SAST covers application code. The Dockerfile is owned by the
+        # "Dockerfile (Hadolint)" job, whose policy blocks the same issues
+        # (e.g. DL3002 = last USER root), so each problem has exactly one gate.
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
             semgrep scan \
               --config p/python --config p/owasp-top-ten --config p/jwt \
               --config .semgrep/rules.yml \
+              --exclude=Dockerfile \
               --metrics=off --sarif-output=semgrep.sarif --text
       - name: Upload SARIF to GitHub Security
         if: always()
