@@ -21,33 +21,26 @@ app:
   enableDocs: false
   # true only when served over HTTPS
   cookieSecure: false
-  resources:
-    requests:
-      cpu: 50m
-      memory: 96Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  # VULN-06: no resource requests/limits (one pod can exhaust the node)
+  resources: {}
 
 serviceAccount:
   create: true
   name: ""
   annotations: {}
 
+# VULN-06: containers run as root
 podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
-  # Group ownership of mounted secret files (mode 0440).
-  fsGroup: 10001
-  seccompProfile:
-    type: RuntimeDefault
+  runAsNonRoot: false
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
 
+# VULN-06: privileged container with privilege escalation and a writable root FS
 securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop: [ALL]
+  privileged: true
+  allowPrivilegeEscalation: true
+  readOnlyRootFilesystem: false
 
 service:
   type: ClusterIP
