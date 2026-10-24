@@ -130,6 +130,19 @@ scripts/update-webhook-url.sh     # ustawia nowy adres w GitHub, sekret z klastr
 
 Dostawy: repo GitOps → Settings → Webhooks → Recent Deliveries (lub `gh api repos/Krrystian/bugtracker-gitops/hooks/<id>/deliveries`).
 
+## Przepływ aplikacja → GitOps (etap 10)
+
+```
+push/merge na main ─► CI: Unit tests → Build image → Push to Docker Hub → Notify GitOps repo
+                                                                   │ repository_dispatch (image-published, tag = SHA)
+                                                                   ▼
+                     bugtracker-gitops: commit z nowym tagiem na "development"
+                                                                   ▼
+                     ręczny PR development → main  ─► webhook ─► Argo CD wdraża
+```
+
+Job `Notify GitOps repo` działa tylko na `main` i tylko po zielonych testach, buildzie i publikacji. Używa sekretu `GITOPS_DISPATCH_TOKEN` (fine-grained PAT: tylko repo `bugtracker-gitops`, Contents read/write).
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash

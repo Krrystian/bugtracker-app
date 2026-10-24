@@ -79,3 +79,21 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
+
+  # Tell the GitOps repo about the new image. It commits the tag to its
+  # "development" branch; deployment still needs a manual PR to its "main".
+  dispatch:
+    name: Notify GitOps repo
+    runs-on: ubuntu-24.04
+    needs: [test, build, publish]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: repository_dispatch -> Krrystian/bugtracker-gitops
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_DISPATCH_TOKEN }}
+        run: |
+          gh api -X POST repos/Krrystian/bugtracker-gitops/dispatches \
+            -f event_type=image-published \
+            -f "client_payload[tag]=${GITHUB_SHA}" \
+            -f "client_payload[source_repository]=${GITHUB_REPOSITORY}"
+          echo "Wysłano image-published dla ${GITHUB_SHA} do repozytorium GitOps" >> "$GITHUB_STEP_SUMMARY"
