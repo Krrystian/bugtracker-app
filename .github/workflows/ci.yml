@@ -159,6 +159,40 @@ jobs:
       - name: Security gate (High/Critical)
         run: python3 scripts/sarif-gate.py checkov/results-mapped.sarif
 
+  secrets-gitleaks:
+    name: Secrets (Gitleaks)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the whole history: a secret removed later is still leaked
+          persist-credentials: false
+      - name: Gitleaks (git history)
+        # --redact keeps secret values out of logs and the report; --exit-code 0
+        # defers the decision to the gate. Runs as the runner user so git accepts
+        # the checkout; a run without the scan summary is a tool error.
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" "$GITLEAKS_IMAGE" \
+            git "$PWD" --redact --no-banner --exit-code 0 \
+            --report-format sarif --report-path "$PWD/gitleaks.sarif" 2>&1 | tee gitleaks.log
+          grep -q "commits scanned" gitleaks.log || { echo "::error::Gitleaks did not scan the history"; exit 1; }
+      - name: Mark findings as Critical
+        # Gitleaks SARIF has no severity; every leaked secret is treated as Critical.
+        run: python3 scripts/sarif-set-severity.py gitleaks.sarif gitleaks-critical.sarif --level error --security-severity 9.0
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('gitleaks-critical.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: gitleaks-critical.sarif
+          category: gitleaks
+      - name: Security gate (any secret blocks)
+        run: python3 scripts/sarif-gate.py gitleaks-critical.sarif
+
   build:
     name: Build image
     runs-on: ubuntu-24.04
@@ -297,7 +331,7 @@ jobs:
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap]
+    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -323,7 +357,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, publish]
+    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
