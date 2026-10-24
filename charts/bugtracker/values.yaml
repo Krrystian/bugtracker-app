@@ -83,7 +83,9 @@ database:
       memory: 512Mi
 
 networkPolicy:
-  enabled: true
+  # VULN-07: NetworkPolicy disabled - every pod in the cluster can reach the
+  # database and the app directly, and the app can connect anywhere (no egress control)
+  enabled: false
   # Where the ingress controller runs (k3d: Traefik in kube-system).
   ingressController:
     namespaceSelector:
