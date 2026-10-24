@@ -84,10 +84,11 @@ jobs:
         # --no-resolve scans exactly the versions that ship instead of guessing
         # transitive versions. Exit code 1 = vulnerabilities found (handled by
         # the gate below after the SARIF upload); anything higher is a tool error.
+        # The workspace is mounted under the same path so SARIF locations map to repo files.
         run: |
           set +e
-          docker run --rm -v "$PWD:/src" "$OSV_IMAGE" scan source \
-            --recursive --no-resolve --format sarif --output-file /src/osv.sarif /src
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "$OSV_IMAGE" scan source \
+            --recursive --no-resolve --format sarif --output-file "$PWD/osv.sarif" "$PWD"
           rc=$?
           set -e
           if [ "$rc" -gt 1 ]; then echo "::error::osv-scanner failed (exit $rc)"; exit "$rc"; fi
@@ -99,6 +100,64 @@ jobs:
           category: osv-scanner
       - name: Security gate (High/Critical)
         run: python3 scripts/sarif-gate.py osv.sarif
+
+  iac-checkov:
+    name: IaC (Checkov)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      CHECKOV_IMAGE: bridgecrew/checkov:3.3.26@sha256:8e63f217cb084f1c1a067326a9cf6e37d54bdc82e5822210d50ca4e2f647dd93
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checkov (Helm chart + Kubernetes manifests)
+        # The Helm framework renders charts/bugtracker (namespace via HELM_NAMESPACE,
+        # image.tag = this commit) and maps findings to template files; the
+        # kubernetes framework covers k8s/ and infra/. --soft-fail only defers the
+        # decision to the gate step below. Justified per-resource exceptions are
+        # checkov.io/skip annotations.
+        # Checkov only WARNS when a chart cannot be rendered and then passes
+        # without checking it, so that case is turned into a hard failure.
+        run: |
+          mkdir -p checkov
+          printf 'image:\n  tag: "%s"\n' "$GITHUB_SHA" > checkov/values.yaml
+          docker run --rm -e HELM_NAMESPACE=bugtracker -v "$PWD:$PWD" -w "$PWD" "$CHECKOV_IMAGE" \
+            -d "$PWD" --framework helm kubernetes --var-file "$PWD/checkov/values.yaml" \
+            --compact --soft-fail -o cli -o sarif --output-file-path "console,$PWD/checkov/results.sarif" \
+            2>&1 | tee checkov/output.txt
+          if grep -q "Failed processing helm chart" checkov/output.txt; then
+            echo "::error::Checkov could not render the Helm chart (see output above)"; exit 1
+          fi
+          grep -q "^helm scan results:" checkov/output.txt \
+            || { echo "::error::no Helm scan results - chart was not checked"; exit 1; }
+      - name: Map Helm findings to chart template paths
+        # Checkov reports rendered charts under its temp dir (tmp/tmpXXXX/...) or
+        # relative to charts/; rewrite them to repo paths so alerts link to files.
+        # Written to a new file: results.sarif is owned by root (Checkov container).
+        run: |
+          python3 - <<'PY'
+          import json, re
+          sarif = json.load(open("checkov/results.sarif"))
+          for run in sarif["runs"]:
+              for result in run["results"]:
+                  for loc in result.get("locations", []):
+                      art = loc["physicalLocation"]["artifactLocation"]
+                      m = re.search(r"(?:^|/)(?:charts/)?(bugtracker/templates/.+)$", art["uri"])
+                      if m:
+                          art["uri"] = "charts/" + m.group(1)
+          json.dump(sarif, open("checkov/results-mapped.sarif", "w"))
+          PY
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: checkov/results-mapped.sarif
+          category: checkov
+      - name: Security gate (High/Critical)
+        run: python3 scripts/sarif-gate.py checkov/results-mapped.sarif
 
   build:
     name: Build image
@@ -123,7 +182,7 @@ jobs:
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv]
+    needs: [test, build, sast-semgrep, sca-osv, iac-checkov]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,7 +208,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv, publish]
+    needs: [test, build, sast-semgrep, sca-osv, iac-checkov, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops

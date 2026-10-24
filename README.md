@@ -70,7 +70,7 @@ Najważniejsze wartości (`charts/bugtracker/values.yaml`):
 | `image.repository` | `krys3x15/bugtracker` | repozytorium obrazu |
 | `image.tag` | *(wymagany)* | pełny SHA commita; pusty lub `latest` → błąd renderowania |
 | `replicaCount` | `2` | liczba replik aplikacji |
-| `existingSecret` | `bugtracker-secrets` | sekret z kluczami `db-password`, `secret-key` (tworzony poza chartem) |
+| `existingSecret` | `bugtracker-secrets` | sekret z kluczami `db-password`, `secret-key` (tworzony poza chartem); montowany jako **pliki** w `/run/secrets/bugtracker` (aplikacja: `SECRETS_DIR`, PostgreSQL: `POSTGRES_PASSWORD_FILE`), nie jako zmienne środowiskowe |
 | `ingress.host` / `ingress.className` | `localhost` / `traefik` | adres i kontroler Ingress |
 | `database.enabled` | `true` | PostgreSQL w klastrze (PVC zachowywany po `helm uninstall`) |
 | `networkPolicy.enabled` | `true` | default-deny; aplikacja tylko z Traefika, baza tylko z aplikacji, brak wyjścia do internetu |
@@ -175,7 +175,7 @@ Strony renderuje serwer (Jinja2), bez JavaScriptu.
 
 ## Konfiguracja (zmienne środowiskowe)
 
-`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki), opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`) i `COOKIE_SECURE=true` (gdy aplikacja działa po HTTPS).
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SECRET_KEY` (≥ 32 znaki); sekrety mogą też pochodzić z plików `<SECRETS_DIR>/db_password` i `<SECRETS_DIR>/secret_key`, opcjonalnie `ENABLE_DOCS=true` (Swagger pod `/docs`) i `COOKIE_SECURE=true` (gdy aplikacja działa po HTTPS).
 
 ## Zabezpieczenia w wersji secure
 
