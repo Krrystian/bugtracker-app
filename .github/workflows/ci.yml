@@ -136,11 +136,11 @@ jobs:
       - name: Map Helm findings to chart template paths
         # Checkov reports rendered charts under its temp dir (tmp/tmpXXXX/...) or
         # relative to charts/; rewrite them to repo paths so alerts link to files.
+        # Written to a new file: results.sarif is owned by root (Checkov container).
         run: |
           python3 - <<'PY'
           import json, re
-          path = "checkov/results.sarif"
-          sarif = json.load(open(path))
+          sarif = json.load(open("checkov/results.sarif"))
           for run in sarif["runs"]:
               for result in run["results"]:
                   for loc in result.get("locations", []):
@@ -148,16 +148,16 @@ jobs:
                       m = re.search(r"(?:^|/)(?:charts/)?(bugtracker/templates/.+)$", art["uri"])
                       if m:
                           art["uri"] = "charts/" + m.group(1)
-          json.dump(sarif, open(path, "w"))
+          json.dump(sarif, open("checkov/results-mapped.sarif", "w"))
           PY
       - name: Upload SARIF to GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
-          sarif_file: checkov/results.sarif
+          sarif_file: checkov/results-mapped.sarif
           category: checkov
       - name: Security gate (High/Critical)
-        run: python3 scripts/sarif-gate.py checkov/results.sarif
+        run: python3 scripts/sarif-gate.py checkov/results-mapped.sarif
 
   build:
     name: Build image
