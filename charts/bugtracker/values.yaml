@@ -8,7 +8,7 @@ image:
   # REQUIRED: full commit SHA built by CI. "latest" is rejected by the chart.
   # Set per environment (GitOps repo: environments/<env>/values.yaml).
   tag: ""
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 replicaCount: 2
 
@@ -38,6 +38,8 @@ podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001
   runAsGroup: 10001
+  # Group ownership of mounted secret files (mode 0440).
+  fsGroup: 10001
   seccompProfile:
     type: RuntimeDefault
 

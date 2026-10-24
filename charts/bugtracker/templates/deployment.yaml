@@ -2,9 +2,14 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "bugtracker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bugtracker.labels" . | nindent 4 }}
     app.kubernetes.io/component: app
+  annotations:
+    # The tag is the immutable commit SHA; Kyverno (stage 14) verifies the Cosign
+    # signature and pins the image to its digest at admission (mutateDigest).
+    checkov.io/skip1: CKV_K8S_43=Tag is an immutable commit SHA; digest pinned and signature verified by Kyverno at admission (stage 14)
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -36,16 +41,9 @@ spec:
               value: {{ .Values.database.name | quote }}
             - name: DB_USER
               value: {{ .Values.database.user | quote }}
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "existingSecret is required" .Values.existingSecret }}
-                  key: db-password
-            - name: SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.existingSecret }}
-                  key: secret-key
+            # Secrets are mounted as files (not env vars), see volumes below.
+            - name: SECRETS_DIR
+              value: /run/secrets/bugtracker
             - name: ENABLE_DOCS
               value: {{ .Values.app.enableDocs | quote }}
             - name: COOKIE_SECURE
@@ -72,9 +70,21 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: secrets
+              mountPath: /run/secrets/bugtracker
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: secrets
+          secret:
+            secretName: {{ required "existingSecret is required" .Values.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: db-password
+                path: db_password
+              - key: secret-key
+                path: secret_key
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

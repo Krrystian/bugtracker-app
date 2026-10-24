@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "bugtracker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bugtracker.labels" . | nindent 4 }}
     app.kubernetes.io/component: app

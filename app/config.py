@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic import Field, SecretStr
@@ -6,7 +7,12 @@ from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
-    """All configuration comes from environment variables (or a local .env file)."""
+    """Configuration from environment variables (or a local .env file).
+
+    Secrets can also be read from files: when SECRETS_DIR is set, a file named
+    after the field (e.g. <SECRETS_DIR>/db_password) provides its value. This is
+    how Kubernetes mounts them, so they never appear in the process environment.
+    """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -41,4 +47,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(_secrets_dir=os.environ.get("SECRETS_DIR") or None)
