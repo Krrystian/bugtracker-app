@@ -6,10 +6,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "bugtracker.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
+    # VULN-08: route all traffic through the misconfigured proxy middleware
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-%s-proxy-headers@kubernetescrd" .Release.Namespace (include "bugtracker.fullname" .) | quote }}
+    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   {{- with .Values.ingress.className }}
   ingressClassName: {{ . }}

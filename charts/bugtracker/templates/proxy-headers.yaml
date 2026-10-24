@@ -1,0 +1,19 @@
+# VULN-08 (branch vuln/dast-runtime only): misconfigured reverse proxy.
+# The Traefik middleware strips the security headers set by the application
+# and advertises the server software and version to every client.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-proxy-headers
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      # VULN-08: an empty value removes the header from the response
+      Content-Security-Policy: ""
+      X-Frame-Options: ""
+      X-Content-Type-Options: ""
+      # VULN-08: server software and version disclosure
+      Server: "uvicorn/0.54.0 (CPython 3.12.15; Debian 13)"
