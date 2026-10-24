@@ -1,0 +1,42 @@
+# Project-specific Semgrep rules (complement the registry rulesets, which do not
+# cover Jinja2 templates rendered by FastAPI/Starlette).
+rules:
+  - id: jinja2-autoescape-disabled-in-template
+    languages: [generic]
+    paths:
+      include:
+        - "app/templates/"
+    patterns:
+      - pattern-regex: '\|\s*safe\b|\{%-?\s*autoescape\s+(false|False)\b'
+    message: >-
+      HTML autoescaping is disabled in a Jinja2 template ('|safe' or
+      'autoescape false'). User-controlled data rendered this way allows
+      cross-site scripting (XSS). Remove '|safe' and let Jinja2 escape the value.
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      likelihood: HIGH
+      impact: HIGH
+
+  - id: markupsafe-markup-on-variable
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: markupsafe.Markup($X)
+          - pattern: jinja2.Markup($X)
+      - pattern-not: markupsafe.Markup("...")
+      - pattern-not: jinja2.Markup("...")
+    message: >-
+      Markup() marks a non-literal value as safe HTML and bypasses autoescaping,
+      which can lead to cross-site scripting (XSS).
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021 - Injection"
+      confidence: MEDIUM
+      likelihood: MEDIUM
+      impact: HIGH
