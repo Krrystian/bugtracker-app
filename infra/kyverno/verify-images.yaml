@@ -1,7 +1,11 @@
 # Admission control (stage 14): in the application namespaces every container
 # image must carry a Cosign signature made with the project key (cosign.pub);
-# the tag is replaced with the verified digest at admission. Unsigned or
-# modified images are rejected.
+# with Enforce the tag is replaced with the verified digest at admission and
+# unsigned or modified images are rejected.
+#
+# kyverno.io/v1 ClusterPolicy is deprecated in Kyverno 1.19 in favour of
+# ImageValidatingPolicy (CEL); it is still fully supported - migration is
+# recorded as technical debt.
 #
 # Scope: only the application namespaces. System namespaces (kube-system,
 # argocd, kyverno, traefik, cloudflared) are not matched, so tool images that
@@ -35,7 +39,8 @@ spec:
           skipImageReferences:
             - "docker.io/library/postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
           failureAction: Audit   # switched to Enforce once a signed image runs (stage 14)
-          mutateDigest: true
+          # Audit mode may not mutate; set to true together with Enforce.
+          mutateDigest: false
           verifyDigest: true
           required: true
           attestors:
