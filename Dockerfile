@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Base image pinned to an exact release and digest (never "latest").
-ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
+# VULN-05: outdated base image (Oct 2023, Debian 12 without two years of security
+# fixes); pinned by tag and digest, so it passes the Dockerfile lint
+ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6235339a74eca01227b03629f63b6f5020abc21142436eced6ec3a9839a76
 
 # --- Stage 1: install dependencies into an isolated virtualenv ---------------
 FROM ${PYTHON_IMAGE} AS builder
