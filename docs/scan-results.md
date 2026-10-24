@@ -8,6 +8,7 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 | 11b | OSV-Scanner 2.6.0 | SCA | ✅ 0 znalezisk | `vuln/sca-deps` ❌ ([run 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495), critical CVE-2018-20060) — test T1 |
 | 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
 | 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
+| 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) | ✅ 0 Low/Medium/High (58 reguł OK, 3 informacyjne) | `vuln/dast-runtime` *(kolejny krok)* |
 
 ## 11a: Semgrep (SAST)
 
@@ -85,3 +86,20 @@ Po zmianach: `helm` 184 ✅ / 0 ❌ / 2 wyjątki, `kubernetes` 274 ✅ / 0 ❌ /
 **Konfiguracja:** job `SBOM (CycloneDX)` — Syft 1.54.1 skanuje obraz `linux/amd64` zbudowany w jobie `Build image` (przekazany jako artefakt `image-amd64`); tylko pakiety (`SYFT_FILE_METADATA_SELECTION=none` — bez 2751 wpisów pojedynczych plików). Wynik: artefakt przebiegu **`sbom-cyclonedx`** (`sbom.cdx.json`, przechowywany 90 dni) + podsumowanie w zakładce przebiegu. `Push to Docker Hub` wymaga istnienia SBOM.
 
 **Zawartość (obraz z `main`, lokalnie):** CycloneDX 1.7, **137 komponentów**: 87 pakietów Debiana (`pkg:deb/...`, np. `openssl 3.5.7-1~deb13u3`), 36 bibliotek Pythona (`pkg:pypi/...`, np. `fastapi 0.159.0` MIT), interpreter `python 3.12.15`, system `debian 13`.
+
+## 11e: OWASP ZAP (DAST)
+
+**Czym jest DAST:** *Dynamic Application Security Testing* — test **działającej** aplikacji z zewnątrz, przez HTTP, bez dostępu do kodu. Wykrywa to, czego nie widać w kodzie ani w konfiguracji: brakujące nagłówki bezpieczeństwa, niebezpieczne flagi ciasteczek, ujawnianie informacji w odpowiedziach serwera, błędne przekierowania.
+
+**Konfiguracja:** job `DAST (OWASP ZAP)` (zależy od `Build image` i `IaC (Checkov)` — wykres jest wdrażany dopiero po przejściu skanu IaC) uruchamia `scripts/dast-zap.sh`:
+
+1. tymczasowy klaster k3d (v5.9.0, binarka weryfikowana SHA-256) z lokalnym rejestrem `dast-registry`,
+2. obraz z bieżącego przebiegu (artefakt `image-amd64`) → push do lokalnego rejestru,
+3. `helm install` wykresu `charts/bugtracker` (namespace z PSA `restricted`, jednorazowe losowe sekrety, Helm v4.3.0 weryfikowany SHA-256),
+4. ZAP *baseline* (skan pasywny: pająk + ocena odpowiedzi) z kontenera w sieci klastra,
+5. `scripts/zap-to-sarif.py` — konwersja JSON → SARIF (ZAP nie generuje SARIF): ryzyko High → `error` (blokuje), Medium → `warning`, Low/Informational → `note`,
+6. SARIF → GitHub Security (kategoria `zap`), raport HTML/JSON jako artefakt `zap-report` (30 dni), bramka; klaster zawsze usuwany.
+
+**Ustalenia przy wdrażaniu (lokalnie):** `--registry-create <nazwa>` nie dodaje przedrostka `k3d-` (nazwa w klastrze = `dast-registry:5050`); load balancer k3d przekazuje tylko porty podane w `--port` (bez tego brak dostępu do Traefika); przy błędzie skrypt wypisuje pody, zdarzenia i logi przed usunięciem klastra.
+
+**Wynik `main` (lokalnie, obraz `e68c74c`):** 58 reguł bez uwag, 0 Low/Medium/High; 3 alerty *Informational* (wykryty formularz logowania, odpowiedzi z ciasteczkiem sesji, „Cookie Poisoning” — parametr formularza odbity w nazwie/wartości ciasteczka CSRF) — opisują działanie aplikacji, nie podatności. Nagłówki bezpieczeństwa (CSP, `X-Frame-Options`, `nosniff`), flagi ciasteczek (`HttpOnly`, `SameSite=Strict`) i brak ujawniania wersji — bez uwag.
