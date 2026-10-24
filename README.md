@@ -158,6 +158,18 @@ push/merge na main ─► CI: Unit tests → Build image → Push to Docker Hub 
 
 Job `Notify GitOps repo` działa tylko na `main` i tylko po zielonych testach, buildzie i publikacji. Używa sekretu `GITOPS_DISPATCH_TOKEN` (fine-grained PAT: tylko repo `bugtracker-gitops`, Contents read/write).
 
+## Sekrety w klastrze (etap 12)
+
+Od etapu 12 sekret aplikacji `bugtracker-secrets` jest zarządzany przez **Sealed Secrets**: zaszyfrowany plik `SealedSecret` leży w repozytorium GitOps (`environments/development/secrets/`), Argo CD go wdraża, a kontroler w klastrze (v0.40.0, `kube-system`) odszyfrowuje go do zwykłego `Secret`. Instalacja kontrolera:
+
+```bash
+curl -fsSLo controller.yaml https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.40.0/controller.yaml
+echo "ac8aabccdd9110430d117501705818115b2ab0993700a9c118d4d42cf4015a17  controller.yaml" | shasum -a 256 -c -
+kubectl apply -f controller.yaml
+```
+
+Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium GitOps. Ręczne `kubectl create secret` z etapów 3–5 zostało zastąpione (sekret przejęty przez kontroler bez usuwania).
+
 ## Uruchomienie lokalne (bez Dockera)
 
 ```bash

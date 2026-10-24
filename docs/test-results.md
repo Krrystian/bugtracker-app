@@ -6,7 +6,7 @@
 | T2 Centralizacja raportów (SARIF) | ✅ zaliczony | 2026-10-24 |
 | T3 Integralność i weryfikacja podpisów Cosign | ⏳ etap 14 | — |
 | T4 Brama wdrożeniowa | ✅ zaliczony | 2026-10-24 |
-| T5 Szczelność sekretów | ⏳ etap 12 | — |
+| T5 Szczelność sekretów | ✅ zaliczony | 2026-10-24 |
 
 ## T1 Blokada i raportowanie podatności kodu (SAST/SCA)
 
@@ -73,3 +73,27 @@ kubectl -n bugtracker get deploy bugtracker -o jsonpath='{.spec.template.spec.co
 ```
 
 **Wynik:** ✅ zaliczony. Wdrożenie wymaga świadomej decyzji człowieka (PR `development` → `main` w repozytorium GitOps; `main` chroniony, także dla administratora).
+
+## T5 Szczelność sekretów
+
+**Cel:** nowy sekret zaszyfrowany `kubeseal` jako `SealedSecret` w publicznym repozytorium GitOps, wdrożony przez Argo CD → odszyfrowany w klastrze; jawna wartość nie występuje w logach ani w historii git.
+
+**Przebieg (2026-10-24):**
+
+1. Losowa wartość (48 znaków) dla sekretu `bugtracker-t5-demo` (klucz `api-token`) wygenerowana i od razu zaszyfrowana kluczem publicznym kontrolera Sealed Secrets v0.40.0 — nigdzie niezapisana ani niewypisana; do weryfikacji zachowany wyłącznie skrót SHA-256 (poza repo, usunięty po teście).
+2. Plik `environments/development/secrets/bugtracker-t5-demo.sealedsecret.yaml` w [Krrystian/bugtracker-gitops#6](https://github.com/Krrystian/bugtracker-gitops/pull/6) — Gitleaks (wymagany check) przepuścił szyfrogram; PR scalony przez właściciela projektu.
+3. Webhook → Argo CD (trzecie źródło `Application`: katalog `secrets/`) → `SealedSecret` w namespace `bugtracker` → kontroler utworzył `Secret` (ownerReference: `SealedSecret`, warunek `Synced=True`).
+
+**Dowód:**
+
+| Sprawdzenie | Wynik |
+|---|---|
+| Skrót SHA-256 wartości odszyfrowanej w klastrze = skrót wartości oryginalnej | ✅ identyczne |
+| Wystąpienia wartości (jawnej i w base64) w historii git `bugtracker-gitops`, wszystkie gałęzie (26 commitów) | ✅ 0 |
+| jw. w `bugtracker-app`, wszystkie gałęzie (60 commitów) | ✅ 0 |
+| Logi `argocd-application-controller`, `argocd-repo-server`, `argocd-server`, `sealed-secrets-controller` (30 min) | ✅ 0 |
+| Logi CI repozytorium GitOps (5 ostatnich przebiegów) | ✅ 0 |
+
+Dodatkowo: `vuln/plaintext-secret` (jawny `Secret` w repo GitOps) zatrzymany przez Gitleaks ([przebieg 40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420), alert Critical), a do klastra nie trafił (Argo CD śledzi tylko `main`).
+
+**Wynik:** ✅ zaliczony.
