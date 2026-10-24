@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Wyszukiwanie{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Wyszukiwanie</h1>
+  <form method="get" action="/ui/search" class="form">
+    <input type="text" name="q" value="{{ q }}">
+    <button class="btn btn-primary" type="submit">Szukaj</button>
+  </form>
+  {# VULN-03: XSS - the query is rendered without HTML escaping #}
+  <p>Wyniki dla: {{ q|safe }} <span class="muted">({{ fingerprint }})</span></p>
+  <ul>{% for r in rows %}<li><a href="/ui/bugs/{{ r.id }}">{{ r.title }}</a></li>{% endfor %}</ul>
+</section>
+{% endblock %}

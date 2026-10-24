@@ -4,6 +4,7 @@ Session: JWT in an HttpOnly, SameSite=Strict cookie.
 CSRF: double-submit token (cookie + hidden form field) on every POST.
 """
 
+import hashlib
 import secrets
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -281,3 +282,21 @@ def delete_bug(
     db.delete(bug)
     db.commit()
     return _redirect("/ui")
+
+
+# --- search (INTENTIONALLY VULNERABLE, branch vuln/sast-code only) ----------
+
+
+@router.get("/search")
+def search(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_user),
+):
+    # VULN-03: SQL injection - user input is concatenated into a raw SQL query
+    sql = "SELECT id, title FROM bugs WHERE title LIKE '%" + q + "%'"
+    rows = db.execute(text(sql)).all()
+    # VULN-03: weak hash - MD5 used to build a "result fingerprint"
+    fingerprint = hashlib.md5(q.encode()).hexdigest()
+    return _render(request, "search.html", user=user, q=q, rows=rows, fingerprint=fingerprint)
