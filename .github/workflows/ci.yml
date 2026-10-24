@@ -193,10 +193,38 @@ jobs:
       - name: Security gate (any secret blocks)
         run: python3 scripts/sarif-gate.py gitleaks-critical.sarif
 
+  lint-hadolint:
+    name: Dockerfile (Hadolint)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      HADOLINT_IMAGE: hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hadolint (policy .hadolint.yaml)
+        # .hadolint.yaml raises the project's forbidden practices to "error";
+        # --no-fail defers the decision to the gate after the SARIF upload.
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "$HADOLINT_IMAGE" \
+            hadolint -c .hadolint.yaml -f sarif --no-fail Dockerfile > hadolint.sarif
+      - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles('hadolint.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: hadolint.sarif
+          category: hadolint
+      - name: Security gate (policy errors)
+        run: python3 scripts/sarif-gate.py hadolint.sarif
+
+  # The image is only built from a Dockerfile that passed the lint policy.
   build:
     name: Build image
     runs-on: ubuntu-24.04
-    needs: [test]
+    needs: [test, lint-hadolint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -331,7 +359,7 @@ jobs:
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
+    needs: [test, lint-hadolint, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -357,7 +385,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
+    needs: [test, lint-hadolint, build, sbom, sast-semgrep, sca-osv, iac-checkov, dast-zap, secrets-gitleaks, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
