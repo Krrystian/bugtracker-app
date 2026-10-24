@@ -4,7 +4,7 @@
 |---|---|---|
 | T1 Blokada i raportowanie podatności kodu (SAST/SCA) | ✅ zaliczony | 2026-10-24 |
 | T2 Centralizacja raportów (SARIF) | ✅ zaliczony | 2026-10-24 |
-| T3 Integralność i weryfikacja podpisów Cosign | ⏳ etap 14 | — |
+| T3 Integralność i weryfikacja podpisów Cosign | ✅ zaliczony | 2026-10-24 |
 | T4 Brama wdrożeniowa | ✅ zaliczony | 2026-10-24 |
 | T5 Szczelność sekretów | ✅ zaliczony | 2026-10-24 |
 
@@ -124,3 +124,34 @@ Repo GitOps: `vuln/plaintext-secret` — `Secrets (Gitleaks)` ❌; Argo CD śled
 Testy T1 i T2 (wymagane w etapie 13) — zaliczone, opisane wyżej.
 
 **Wynik:** ✅ etap 13 zaliczony.
+
+## T3 Integralność i weryfikacja podpisów Cosign
+
+**Cel:** w repozytorium GitOps podmiana obrazu w `values.yaml` na losowy, niepodpisany (`vuln/unsigned-image`), wdrożenie w piaskownicy → Kyverno blokuje pod z błędem braku podpisu.
+
+**Mechanizm:**
+- CI (tylko `main`): obraz podpisany **po digeście** (`cosign sign`), SBOM CycloneDX dołączony jako podpisana atestacja (`cosign attest`), oba zweryfikowane kluczem `cosign.pub` w tym samym jobie.
+- Klaster: Kyverno v1.19.1, `ImageValidatingPolicy verify-bugtracker-images` (`infra/kyverno/verify-images.yaml`), `Deny`, namespace'y `bugtracker` i `sandbox`: obraz musi mieć podpis **i** podpisaną atestację SBOM kluczem projektu; tag zamieniany na digest; jedyny wyjątek — PostgreSQL przypięty digestem.
+
+**Przebieg (2026-10-24):**
+
+1. Gałąź `vuln/unsigned-image` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops): `image: docker.io/library/nginx:1.27.3-alpine` (VULN-09).
+2. `Application bugtracker-sandbox` (namespace `sandbox`, ręczna synchronizacja, bez Ingress i bazy) — synchronizacja: Deployment utworzony.
+3. Kyverno odrzucił tworzenie poda:
+
+```
+ReplicaSet/bugtracker-6557cd966b: Error creating: admission webhook
+"ivpol.validate.kyverno.svc-fail-finegrained-verify-bugtracker-images" denied the request:
+Policy verify-bugtracker-images failed: image is not signed with the project Cosign key (cosign.pub)
+```
+
+Liczba podów w `sandbox`: 0.
+
+**Kontrola pozytywna (produkcja, ta sama polityka w trybie `Deny`):** `rollout restart deploy/bugtracker` — nowe pody przyjęte z obrazem `docker.io/krys3x15/bugtracker:1d205e6…@sha256:fb2464faac3be55123ba200bda75013038f915ef15564ee9d2dabb9905cf3fa3` (digest dopisany przez Kyverno), aplikacja dostępna. Weryfikacja podpisu tego digestu: (1) Kyverno przyjął obraz — polityka sprawdza podpis i atestację SBOM; (2) CI ([przebieg 40117933887](https://github.com/Krrystian/bugtracker-app/actions/runs/40117933887), job `Push to Docker Hub`, digest `sha256:fb2464fa…` = indeks obrazu wieloplatformowego): dla podpisu i dla atestacji CycloneDX — „The signatures were verified against the specified public key”, „Existence of the claims in the transparency log was verified offline”. Lokalna próba `cosign verify` tego digestu zakończyła się błędem `TOOMANYREQUESTS` (anonimowy limit Docker Hub) — **nie** sprawdziła podpisu; wcześniej tego dnia lokalnie zweryfikowano analogicznie podpisany obraz `d1f9caf` (podpis i atestacja OK).
+
+**Ustalenia przy wdrażaniu:**
+- `kyverno.io/v1 ClusterPolicy` (`verifyImages`) nie odczytuje podpisów cosign v3 (OCI referrers / Sigstore bundle) — „no signatures found” także dla podpisanego obrazu; przejście na `ImageValidatingPolicy` (sprawdzone na kopii polityki w trybie dry-run przed włączeniem blokady).
+- Kyverno domyślnie mutował też Deployment (autogen) → Argo CD stale OutOfSync; autogen wyłączony — weryfikowane i mutowane są tylko Pody.
+- Anonimowe zapytania Kyverno do Docker Hub trafiły na limit pobrań (`TOOMANYREQUESTS`), przez co przy `failurePolicy: Fail` nie dało się utworzyć nowych podów (produkcja działała na istniejących, restart cofnięty); Kyverno używa teraz tokenu Docker Hub tylko do odczytu (sekret `dockerhub-readonly` w namespace `kyverno`, poza Git).
+
+**Wynik:** ✅ zaliczony.
