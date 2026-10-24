@@ -169,20 +169,75 @@ jobs:
           persist-credentials: false
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Build (all platforms)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # The amd64 image is handed to the jobs that analyse the built image
+      # (SBOM now; image scan and DAST later) as a run artifact.
+      - name: Build amd64 image for analysis
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:ci
+          cache-from: type=gha
+      - name: Export image
+        run: docker save "${IMAGE_NAME}:ci" -o image.tar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-amd64
+          path: image.tar
+          retention-days: 1
+
+  # Software Bill of Materials of the built image (inventory, not a gate).
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-24.04
+    needs: [build]
+    env:
+      SYFT_IMAGE: anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-amd64
+      - name: Generate CycloneDX SBOM (Syft)
+        # Packages only (OS + Python); per-file entries are left out.
+        run: |
+          docker run --rm -e SYFT_FILE_METADATA_SELECTION=none -v "$PWD:/w" "$SYFT_IMAGE" \
+            scan docker-archive:/w/image.tar \
+            --source-name "docker.io/krys3x15/${IMAGE_NAME}" --source-version "$GITHUB_SHA" \
+            -o cyclonedx-json=/w/sbom.cdx.json
+      - name: Summary
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import collections, json
+          bom = json.load(open("sbom.cdx.json"))
+          comps = bom.get("components", [])
+          eco = collections.Counter(
+              c["purl"].split(":")[1].split("/")[0] if c.get("purl") else "other" for c in comps)
+          print(f"### SBOM: {bom['bomFormat']} {bom['specVersion']}, {len(comps)} components")
+          print("| ecosystem | components |\n|---|---|")
+          for name, count in eco.most_common():
+              print(f"| {name} | {count} |")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 90
 
   # Publishing only from main and only after tests, build and ALL security
-  # scanners are green.
+  # scanners are green. The SBOM must exist too (signed with the image, stage 14).
   publish:
     name: Push to Docker Hub
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv, iac-checkov]
+    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -208,7 +263,7 @@ jobs:
   dispatch:
     name: Notify GitOps repo
     runs-on: ubuntu-24.04
-    needs: [test, build, sast-semgrep, sca-osv, iac-checkov, publish]
+    needs: [test, build, sbom, sast-semgrep, sca-osv, iac-checkov, publish]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: repository_dispatch -> Krrystian/bugtracker-gitops
