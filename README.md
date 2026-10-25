@@ -3,6 +3,8 @@
 Prosty bugtracker (FastAPI + PostgreSQL) — aplikacja do projektu „Bezpieczny potok GitOps (DevSecOps)”.
 Gałąź `main` to wersja secure. Podatne warianty żyją wyłącznie na gałęziach `vuln/*`.
 
+**Nowa osoba w zespole?** Zacznij od [docs/zespol-start.md](docs/zespol-start.md) — uruchomienie w Docker Compose, testy i pełny klaster jedną komendą (`scripts/bootstrap-cluster.sh`).
+
 ## Uruchomienie w Dockerze (zalecane)
 
 Wymaga Docker Desktop i pliku `.env` (skopiuj z `.env.example`, uzupełnij `DB_PASSWORD` i `SECRET_KEY`).
