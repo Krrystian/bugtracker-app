@@ -20,7 +20,7 @@ docker compose down -v         # stop + usunięcie danych
 
 Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
-## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)
+## Kubernetes w Docker Desktop (manifesty statyczne, etap 3) 
 
 Wymaga włączonego Kubernetes w Docker Desktop (kontekst `docker-desktop`) i kontrolera Ingress Traefik.
 
