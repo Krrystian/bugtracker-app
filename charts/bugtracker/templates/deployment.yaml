@@ -73,7 +73,14 @@ spec:
             - name: secrets
               mountPath: /run/secrets/bugtracker
               readOnly: true
+            # VULN-11: hostPath volume mount (exposes node Docker socket to container)
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
       volumes:
+        # VULN-11: hostPath volume mount - critical container escape risk
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
         - name: tmp
           emptyDir: {}
         - name: secrets
