@@ -114,14 +114,14 @@ bugtracker   Active   16d   kubernetes.io/metadata.name=bugtracker,pod-security.
 ```console
 $ kubectl -n bugtracker get all,pvc,cm,secret,quota,limitrange,networkpolicy,ingress
 NAME                             READY   STATUS    RESTARTS   AGE
-pod/bugtracker-87c664bdb-dz4x6   1/1     Running   0          3m
-pod/bugtracker-87c664bdb-r49sd   1/1     Running   0          2m44s
-pod/bugtracker-postgres-0        1/1     Running   0          3m2s
+pod/bugtracker-87c664bdb-dz4x6   1/1     Running   0          28m
+pod/bugtracker-87c664bdb-r49sd   1/1     Running   0          28m
+pod/bugtracker-postgres-0        1/1     Running   0          28m
 
 NAME                                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
 service/bugtracker                     ClusterIP   10.43.195.4     <none>        80/TCP     16d
 service/bugtracker-postgres            ClusterIP   10.43.103.141   <none>        5432/TCP   16d
-service/bugtracker-postgres-headless   ClusterIP   None            <none>        5432/TCP   3m2s
+service/bugtracker-postgres-headless   ClusterIP   None            <none>        5432/TCP   28m
 
 NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
 deployment.apps/bugtracker   2/2     2            2           16d
@@ -135,19 +135,18 @@ replicaset.apps/bugtracker-7748c65c89   0         0         0       13d
 replicaset.apps/bugtracker-77b46f86bb   0         0         0       16d
 replicaset.apps/bugtracker-77f554f595   0         0         0       14d
 replicaset.apps/bugtracker-78c8c6b6fb   0         0         0       15d
-replicaset.apps/bugtracker-87c664bdb    2         2         2       3m3s
+replicaset.apps/bugtracker-87c664bdb    2         2         2       28m
 replicaset.apps/bugtracker-b64b7d6b9    0         0         0       13d
 replicaset.apps/bugtracker-f8c74bc66    0         0         0       14d
 
 NAME                                   READY   AGE
-statefulset.apps/bugtracker-postgres   1/1     3m3s
+statefulset.apps/bugtracker-postgres   1/1     28m
 
 NAME                                               STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
-persistentvolumeclaim/bugtracker-postgres-data     Bound    pvc-1f4ba622-130e-4863-b202-2ee495eb1843   1Gi        RWO            local-path     <unset>                 16d
-persistentvolumeclaim/data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            local-path     <unset>                 3m3s
+persistentvolumeclaim/data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            local-path     <unset>                 28m
 
 NAME                          DATA   AGE
-configmap/bugtracker-config   7      3m3s
+configmap/bugtracker-config   7      28m
 configmap/kube-root-ca.crt    1      16d
 
 NAME                                      TYPE                 DATA   AGE
@@ -156,7 +155,7 @@ secret/bugtracker-t5-demo                 Opaque               1      13d
 secret/sh.helm.release.v1.bugtracker.v1   helm.sh/release.v1   1      16d
 
 NAME                             REQUEST                                                                                                                                                                                     LIMIT                                         AGE
-resourcequota/bugtracker-quota   persistentvolumeclaims: 2/3, pods: 3/10, requests.cpu: 200m/1, requests.memory: 320Mi/1Gi, requests.storage: 2Gi/5Gi, services: 3/5, services.loadbalancers: 0/0, services.nodeports: 0/0   limits.cpu: 1500m/3, limits.memory: 1Gi/2Gi   3m3s
+resourcequota/bugtracker-quota   persistentvolumeclaims: 1/3, pods: 3/10, requests.cpu: 200m/1, requests.memory: 320Mi/1Gi, requests.storage: 1Gi/5Gi, services: 3/5, services.loadbalancers: 0/0, services.nodeports: 0/0   limits.cpu: 1500m/3, limits.memory: 1Gi/2Gi   28m
 
 NAME                           CREATED AT
 limitrange/bugtracker-limits   2026-11-07T10:58:48Z
@@ -177,7 +176,6 @@ ingress.networking.k8s.io/bugtracker   traefik   localhost   172.18.0.2   80    
 Uwagi do wyniku:
 - ReplicaSety z `DESIRED 0` to historia Deploymentu (rollback). Kubernetes przechowuje je domyślnie (`revisionHistoryLimit: 10`).
 - `secret/sh.helm.release.v1.bugtracker.v1` został po próbnej instalacji `helm install` z etapu 6. Argo CD nie używa Helma do instalacji (renderuje szablony), więc ten obiekt nie jest już używany.
-- `persistentvolumeclaim/bugtracker-postgres-data` to PVC poprzedniej wersji bazy (Deployment). Został celowo zachowany jako kopia przy przejściu na StatefulSet (sekcja 3.5).
 
 ### 3.3. Deployment (aplikacja) i StatefulSet (baza)
 
@@ -189,8 +187,8 @@ bugtracker   2/2     2            2           16d   bugtracker   krys3x15/bugtra
 
 ```console
 $ kubectl -n bugtracker get sts bugtracker-postgres -o wide
-NAME                  READY   AGE    CONTAINERS   IMAGES
-bugtracker-postgres   1/1     3m4s   postgres     postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+NAME                  READY   AGE   CONTAINERS   IMAGES
+bugtracker-postgres   1/1     28m   postgres     postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
 ```
 
 ```console
@@ -219,10 +217,10 @@ docker.io/krys3x15/bugtracker:1d205e66f614322088c4159838b83ee136f5177d@sha256:fb
 
 ```console
 $ kubectl -n bugtracker get svc -o wide
-NAME                           TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE    SELECTOR
-bugtracker                     ClusterIP   10.43.195.4     <none>        80/TCP     16d    app.kubernetes.io/component=app,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
-bugtracker-postgres            ClusterIP   10.43.103.141   <none>        5432/TCP   16d    app.kubernetes.io/component=database,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
-bugtracker-postgres-headless   ClusterIP   None            <none>        5432/TCP   3m4s   app.kubernetes.io/component=database,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
+NAME                           TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+bugtracker                     ClusterIP   10.43.195.4     <none>        80/TCP     16d   app.kubernetes.io/component=app,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
+bugtracker-postgres            ClusterIP   10.43.103.141   <none>        5432/TCP   16d   app.kubernetes.io/component=database,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
+bugtracker-postgres-headless   ClusterIP   None            <none>        5432/TCP   28m   app.kubernetes.io/component=database,app.kubernetes.io/instance=bugtracker,app.kubernetes.io/name=bugtracker
 ```
 
 ```console
@@ -234,7 +232,7 @@ Cache-Control: no-store
 Content-Length: 31
 Content-Security-Policy: default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
 Content-Type: application/json
-Date: Sat, 07 Nov 2026 11:01:52 GMT
+Date: Sat, 07 Nov 2026 11:27:27 GMT
 Referrer-Policy: no-referrer
 Server: uvicorn
 X-Content-Type-Options: nosniff
@@ -255,12 +253,10 @@ X-Frame-Options: DENY
 
 ```console
 $ kubectl -n bugtracker get pvc -o wide; kubectl get pv
-NAME                         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE    VOLUMEMODE
-bugtracker-postgres-data     Bound    pvc-1f4ba622-130e-4863-b202-2ee495eb1843   1Gi        RWO            local-path     <unset>                 16d    Filesystem
-data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            local-path     <unset>                 3m4s   Filesystem
+NAME                         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE
+data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            local-path     <unset>                 28m   Filesystem
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
-pvc-1f4ba622-130e-4863-b202-2ee495eb1843   1Gi        RWO            Delete           Bound    bugtracker/bugtracker-postgres-data     local-path     <unset>                          16d
-pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            Delete           Bound    bugtracker/data-bugtracker-postgres-0   local-path     <unset>                          3m2s
+pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            Delete           Bound    bugtracker/data-bugtracker-postgres-0   local-path     <unset>                          28m
 ```
 
 ![Zrzut: PVC i PV](img/07-pvc.png)
@@ -271,7 +267,8 @@ Przejście bazy z Deploymentu na StatefulSet (2026-11-07) zrobiłem tak:
 1. kopia bazy (`pg_dump -Fc`, poza repozytorium),
 2. adnotacja `argocd.argoproj.io/sync-options=Prune=false` na starym PVC, żeby Argo CD go nie usunął,
 3. scalenie zmiany wykresu, po którym Argo CD utworzył StatefulSet z nowym PVC `data-bugtracker-postgres-0`,
-4. odtworzenie danych (`pg_restore`): 2 zgłoszenia i 3 użytkowników, zgodnie z kopią.
+4. odtworzenie danych (`pg_restore`): 2 zgłoszenia i 3 użytkowników, zgodnie z kopią,
+5. po weryfikacji usunięcie starego PVC `bugtracker-postgres-data`; Argo CD wrócił do stanu `Synced`.
 
 Dane w nowej bazie:
 
@@ -422,11 +419,11 @@ Resource                Used   Hard
 --------                ----   ----
 limits.cpu              1500m  3
 limits.memory           1Gi    2Gi
-persistentvolumeclaims  2      3
+persistentvolumeclaims  1      3
 pods                    3      10
 requests.cpu            200m   1
 requests.memory         320Mi  1Gi
-requests.storage        2Gi    5Gi
+requests.storage        1Gi    5Gi
 services                3      5
 services.loadbalancers  0      0
 services.nodeports      0      0
@@ -454,16 +451,15 @@ ResourceQuota jest dobrana do 2 podów aplikacji, 1 dodatkowego poda podczas rol
 ```console
 $ kubectl -n argocd get applications; kubectl -n argocd get application bugtracker -o jsonpath='{range .status.resources[?(@.status!="Synced")]}{.kind}/{.name}: {.status}{"\n"}{end}'
 NAME                 SYNC STATUS   HEALTH STATUS
-bugtracker           OutOfSync     Healthy
+bugtracker           Synced        Healthy
 bugtracker-sandbox   OutOfSync     Degraded
-PersistentVolumeClaim/bugtracker-postgres-data: OutOfSync
 ```
 
 ![Zrzut: Argo CD UI](img/12-argocd.png)
 
 > Zrzut do wykonania: (1) terminal z wynikiem `kubectl -n argocd get applications`; (2) interfejs Argo CD (`kubectl -n argocd port-forward svc/argocd-server 8080:443`, potem `https://localhost:8080`) z drzewem zasobów aplikacji `bugtracker`.
 
-Stan `OutOfSync` aplikacji `bugtracker` wynika **tylko** ze starego PVC `bugtracker-postgres-data`, który celowo chroni adnotacja `Prune=false` (sekcja 3.5). Wszystkie pozostałe zasoby są `Synced`, a aplikacja jest `Healthy`. Po usunięciu starego PVC stan zmieni się na `Synced`. Aplikacja `bugtracker-sandbox` (piaskownica, ręczna synchronizacja) jest `Degraded` celowo: Kyverno nie wpuszcza tam niepodpisanego obrazu (test T3).
+Aplikacja `bugtracker` jest `Synced` i `Healthy`: stan klastra zgadza się z repozytoriami. Aplikacja `bugtracker-sandbox` (piaskownica, ręczna synchronizacja) jest `Degraded` celowo: Kyverno nie wpuszcza tam niepodpisanego obrazu (test T3).
 
 ## 4. Testy obiektów Kubernetes
 
@@ -659,9 +655,8 @@ Testy zaplanowane w zadaniu cząstkowym nr 2 (dokumentacja techniczna projektu).
 
 ```console
 $ kubectl -n sandbox get events --field-selector reason=FailedCreate --sort-by=.lastTimestamp | tail -3; kubectl -n sandbox get pods
-12d         Warning   FailedCreate   replicaset/bugtracker-6557cd966b   Error creating: admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-verify-bugtracker-images" denied the request: Policy verify-bugtracker-images failed: image is not signed with the project Cosign key (cosign.pub)
-39m         Warning   FailedCreate   replicaset/bugtracker-6557cd966b   Error creating: Internal error occurred: failed calling webhook "ivpol.mutate.kyverno.svc-fail-finegrained-verify-bugtracker-images": failed to call webhook: Post "https://kyverno-svc.kyverno.svc:443/ivpol/mutate/verify-bugtracker-images?timeout=30s": no endpoints available for service "kyverno-svc"
-14s         Warning   FailedCreate   replicaset/bugtracker-6557cd966b   Error creating: admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-verify-bugtracker-images" denied the request: Policy verify-bugtracker-images failed: image is not signed with the project Cosign key (cosign.pub)
+LAST SEEN   TYPE      REASON         OBJECT                             MESSAGE
+8m42s       Warning   FailedCreate   replicaset/bugtracker-6557cd966b   Error creating: admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-verify-bugtracker-images" denied the request: Policy verify-bugtracker-images failed: image is not signed with the project Cosign key (cosign.pub)
 No resources found in sandbox namespace.
 ```
 
