@@ -707,19 +707,19 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 
 | ID | Gałąź | Repo | Co psuje | Bramka | Ostatni przebieg |
 |---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | sztuczny klucz API w kodzie | Secrets (Gitleaks) | <!-- TODO: run-id --> |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | `latest`, root, brak przypięć | Dockerfile (Hadolint) | <!-- TODO: run-id --> |
-| VULN-03 | `vuln/sast-code` | app | SQL injection, XSS, MD5 | SAST (Semgrep) | <!-- TODO: run-id --> |
-| VULN-04 | `vuln/sca-deps` | app | `urllib3 1.22` (CVE-2018-20060) | SCA (OSV-Scanner), T1 | <!-- TODO: run-id --> |
-| VULN-05 | `vuln/image-cve` | app | obraz bazowy z 2023 r. | Image (Trivy) | <!-- TODO: run-id --> |
-| VULN-06 | `vuln/helm-privileged` | app | root, `privileged`, brak limitów | IaC (Checkov), T2 | <!-- TODO: run-id --> |
-| VULN-07 | `vuln/helm-no-netpol` | app | brak NetworkPolicy | IaC (Checkov) | <!-- TODO: run-id --> |
-| VULN-08 | `vuln/dast-runtime` | app | proxy usuwa nagłówki bezpieczeństwa | DAST (OWASP ZAP) | <!-- TODO: run-id --> |
+| VULN-01 | `vuln/secret-leak` | app | sztuczny klucz API w kodzie | Secrets (Gitleaks) | ❌ tylko zaplanowana bramka, [42366696360](https://github.com/Krrystian/bugtracker-app/actions/runs/42366696360) |
+| VULN-02 | `vuln/dockerfile-bad-practices` | app | `latest`, root, brak przypięć | Dockerfile (Hadolint) | ❌ tylko zaplanowana bramka, [42366683545](https://github.com/Krrystian/bugtracker-app/actions/runs/42366683545) |
+| VULN-03 | `vuln/sast-code` | app | SQL injection, XSS, MD5 | SAST (Semgrep) | ❌ tylko zaplanowana bramka, [42366693206](https://github.com/Krrystian/bugtracker-app/actions/runs/42366693206) |
+| VULN-04 | `vuln/sca-deps` | app | `urllib3 1.22` (CVE-2018-20060) | SCA (OSV-Scanner), T1 | ❌ tylko zaplanowana bramka, [42366694277](https://github.com/Krrystian/bugtracker-app/actions/runs/42366694277) |
+| VULN-05 | `vuln/image-cve` | app | obraz bazowy z 2023 r. | Image (Trivy) | ❌ tylko zaplanowana bramka, [42366690816](https://github.com/Krrystian/bugtracker-app/actions/runs/42366690816) |
+| VULN-06 | `vuln/helm-privileged` | app | root, `privileged`, brak limitów | IaC (Checkov), T2 | ❌ tylko zaplanowana bramka, [42366689529](https://github.com/Krrystian/bugtracker-app/actions/runs/42366689529) |
+| VULN-07 | `vuln/helm-no-netpol` | app | brak NetworkPolicy | IaC (Checkov) | ❌ tylko zaplanowana bramka, [42366687528](https://github.com/Krrystian/bugtracker-app/actions/runs/42366687528) |
+| VULN-08 | `vuln/dast-runtime` | app | proxy usuwa nagłówki bezpieczeństwa | DAST (OWASP ZAP) | ❌ tylko zaplanowana bramka, [42366681769](https://github.com/Krrystian/bugtracker-app/actions/runs/42366681769) |
 | VULN-09 | `vuln/unsigned-image` | gitops | niepodpisany obraz w `values.yaml` | Kyverno (admission), T3 | piaskownica, sekcja T3 |
-| VULN-10 | `vuln/plaintext-secret` | gitops | jawny `Secret` zamiast `SealedSecret` | Secrets (Gitleaks) repo GitOps | <!-- TODO: run-id --> |
-| VULN-11 | `vuln/helm-hostpath` | app | `hostPath` `/var/run/docker.sock` w podzie aplikacji | IaC (Checkov) | <!-- TODO: run-id --> |
+| VULN-10 | `vuln/plaintext-secret` | gitops | jawny `Secret` zamiast `SealedSecret` | Secrets (Gitleaks) repo GitOps | ❌ tylko zaplanowana bramka, [42366699182](https://github.com/Krrystian/bugtracker-gitops/actions/runs/42366699182) |
+| VULN-11 | `vuln/helm-hostpath` | app | `hostPath` `/var/run/docker.sock` w podzie aplikacji | IaC (Checkov) | ❌ tylko zaplanowana bramka, [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999) |
 
-Linki do najnowszych przebiegów zostaną uzupełnione po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0). Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md) (etap 13).
+Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0): w każdym czerwony jest wyłącznie job zaplanowanej bramki, a joby publikacji (`Push to Docker Hub`, `Notify GitOps repo`) są pominięte. Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md) (etap 13).
 
 ![Zrzut: przebiegi gałęzi vuln](img/25-vuln-runs.png)
 
