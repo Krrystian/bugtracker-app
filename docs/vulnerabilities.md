@@ -10,12 +10,12 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 | VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | 11g | ✅ zatrzymany przez Hadolint |
 | VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
 | VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | ✅ zatrzymany przez OSV-Scanner |
-| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | 11h | **utworzony** (po scaleniu Trivy) |
+| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | 11h | ✅ zatrzymany przez Trivy |
 | VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | 11c | ✅ zatrzymany przez Checkov |
 | VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | 11c, 14 | ✅ zatrzymany przez Checkov (klaster: etap 14) |
 | VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
-| VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | Kyverno (admission), test T3 | 14 | planowany |
-| VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | Gitleaks na repo GitOps | 12 | planowany |
+| VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | 14 | ✅ zatrzymany przez Kyverno |
+| VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | 12 | ✅ zatrzymany przez Gitleaks |
 
 ---
 
@@ -105,3 +105,23 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
 - **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
 - **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.15-slim-trixie`, Debian 13.7) przypięty digestem; 0 CVE z dostępną poprawką.
+
+---
+
+## VULN-10: jawne hasło w repozytorium GitOps
+
+- **Branch:** `vuln/plaintext-secret` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops)
+- **Bramka:** workflow `Gitleaks` repo GitOps (job `Secrets (Gitleaks)`, wymagany check `main`).
+- **Co psujemy:** `environments/development/secrets/db-admin.secret.yaml` — zwykły `Secret` ze `stringData` (losowe, nigdzie nieużywane hasło) zamiast `SealedSecret` (CWE-312, CWE-798).
+- **Wynik:** [przebieg 40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420) ❌, alert Critical `generic-api-key` w `db-admin.secret.yaml:11`. Plik nie trafił do klastra — Argo CD śledzi wyłącznie `main`.
+- **Poprawka w `main`:** wyłącznie `SealedSecret` (`*.sealedsecret.yaml`); `.gitleaks.toml` dopuszcza tylko szyfrogram Sealed Secrets w takich plikach — jawna wartość jest wykrywana wszędzie.
+
+---
+
+## VULN-09: niepodpisany obraz w repozytorium GitOps (integralność)
+
+- **Branch:** `vuln/unsigned-image` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops); wdrażany wyłącznie przez `Application bugtracker-sandbox` (namespace `sandbox`, ręczna synchronizacja, bez Ingress).
+- **Bramka:** Kyverno `ImageValidatingPolicy verify-bugtracker-images` (admission, `Deny`).
+- **Co psujemy:** `environments/development/values.yaml` — `image: docker.io/library/nginx:1.27.3-alpine` zamiast podpisanego `krys3x15/bugtracker` (CWE-494, CWE-345). Symuluje podmianę obrazu w GitOps (np. przez przejęte konto) na obraz spoza potoku CI.
+- **Wynik:** pod odrzucony — „image is not signed with the project Cosign key (cosign.pub)”; 0 podów w `sandbox` (test T3).
+- **Poprawka w `main`:** wyłącznie obrazy z potoku CI, podpisane po digeście kluczem projektu, z podpisaną atestacją SBOM; Kyverno wymusza to przy każdym tworzeniu poda.

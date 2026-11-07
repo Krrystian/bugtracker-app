@@ -1,0 +1,78 @@
+# Admission control (stage 14): in the application namespaces every container
+# image must carry a Cosign signature AND a signed CycloneDX SBOM attestation
+# made with the project key (cosign.pub). The tag is replaced with the verified
+# digest at admission. Unsigned or modified images are rejected.
+#
+# ImageValidatingPolicy (CEL, sigstore-go) is used because it understands the
+# Cosign v3 signature format (OCI referrers / Sigstore bundles); the older
+# kyverno.io/v1 ClusterPolicy verifyImages could not find these signatures.
+#
+# Scope: only the bugtracker and sandbox namespaces. System namespaces
+# (kube-system, argocd, kyverno, traefik, cloudflared) are not matched, so tool
+# images that the project does not sign keep working.
+#
+# The only unsigned image allowed is the official PostgreSQL image, and only at
+# the exact digest pinned in charts/bugtracker/values.yaml.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: verify-bugtracker-images
+  annotations:
+    policies.kyverno.io/title: Require Cosign-signed images with an SBOM attestation
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  # Only Pods are verified and mutated (tag -> digest). Autogen for Deployments
+  # etc. is off: mutating the Deployment would make it differ from Git and
+  # Argo CD would report OutOfSync and keep re-syncing.
+  autogen:
+    podControllers:
+      controllers: []
+  webhookConfiguration:
+    timeoutSeconds: 30   # signature + attestation verification takes ~10 s
+  # Authenticated, read-only access to Docker Hub: anonymous requests hit the
+  # pull rate limit (seen on 2026-10-24) and, with failurePolicy Fail, new pods
+  # could not be created. The secret (docker-registry type, read-only token) is
+  # created out of band in the kyverno namespace and never stored in Git.
+  credentials:
+    secrets: [dockerhub-readonly]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [bugtracker, sandbox]
+  matchImageReferences:
+    - expression: >-
+        ref != "postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea" && ref != "docker.io/library/postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+  validationConfigurations:
+    mutateDigest: true
+    verifyDigest: true
+    required: true
+  attestors:
+    - name: project
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIbpbUHXqS7PRTFzlEcSNeIdUl01b
+            cIL7AhJfKQhWAeutOSNzKLzgJGGgmYZCCp7Yo4qyOwuUHWRtk87pvuhANQ==
+            -----END PUBLIC KEY-----
+  attestations:
+    - name: sbom
+      intoto:
+        type: https://cyclonedx.org/bom
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.project])).all(e, e > 0)
+      message: image is not signed with the project Cosign key (cosign.pub)
+    - expression: >-
+        images.containers.map(image, verifyAttestationSignatures(image, attestations.sbom, [attestors.project])).all(e, e > 0)
+      message: image has no CycloneDX SBOM attestation signed with the project Cosign key
