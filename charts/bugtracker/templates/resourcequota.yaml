@@ -1,0 +1,14 @@
+{{- if .Values.resourceQuota.enabled -}}
+# Upper bound for everything running in the namespace (sized for 2 app pods
+# + 1 surge pod during a rolling update + the database, with headroom).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-quota
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.resourceQuota.hard | nindent 4 }}
+{{- end }}

@@ -11,7 +11,36 @@ Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code s
 | 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK) | `vuln/dast-runtime` ❌ ([run 40088388516](https://github.com/Krrystian/bugtracker-app/actions/runs/40088388516), 4 reguły FAIL, 17 wystąpień) |
 | 11f | Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` ❌ ([run 40092751830](https://github.com/Krrystian/bugtracker-app/actions/runs/40092751830), critical `generic-api-key`) |
 | 11g | Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` ❌ ([run 40096588165](https://github.com/Krrystian/bugtracker-app/actions/runs/40096588165), 6 blokujących) |
-| 11h | Trivy 0.75.0 | CVE w pakietach systemu obrazu | ✅ 0 CVE z dostępną poprawką (164 bez poprawki — raport) | `vuln/image-cve` *(po scaleniu)* |
+| 11h | Trivy 0.75.0 | CVE w pakietach systemu obrazu | ✅ 0 CVE z dostępną poprawką (164 bez poprawki — raport) | `vuln/image-cve` ❌ ([run 40097682621](https://github.com/Krrystian/bugtracker-app/actions/runs/40097682621), 90 High/Critical) |
+
+## Podsumowanie etapu 11: każdy branch `vuln/*` pada na swojej bramce
+
+Stan po aktualizacji wszystkich branchy do bieżącego `main` (2026-10-24) — każdy przebieg uruchamia **wszystkie** skanery:
+
+| Branch | Podatność | Przebieg | Czerwony job (jedyny) | Pominięte z założenia |
+|---|---|---|---|---|
+| `vuln/sast-code` | VULN-03 SQL injection, XSS, MD5 | [40098199868](https://github.com/Krrystian/bugtracker-app/actions/runs/40098199868) | SAST (Semgrep) | — |
+| `vuln/sca-deps` | VULN-04 `urllib3 1.22` (CVE-2018-20060) | [40098201800](https://github.com/Krrystian/bugtracker-app/actions/runs/40098201800) | SCA (OSV-Scanner) | — |
+| `vuln/helm-privileged` | VULN-06 root, `privileged`, brak limitów | [40098204259](https://github.com/Krrystian/bugtracker-app/actions/runs/40098204259) | IaC (Checkov) | DAST (wykres nie jest wdrażany po odrzuceniu przez Checkov) |
+| `vuln/helm-no-netpol` | VULN-07 brak NetworkPolicy | [40098207063](https://github.com/Krrystian/bugtracker-app/actions/runs/40098207063) | IaC (Checkov) | DAST (jw.) |
+| `vuln/dast-runtime` | VULN-08 proxy usuwa nagłówki, ujawnia wersję | [40098209417](https://github.com/Krrystian/bugtracker-app/actions/runs/40098209417) | DAST (OWASP ZAP) | — |
+| `vuln/secret-leak` | VULN-01 klucz API w kodzie (sztuczny) | [40098211874](https://github.com/Krrystian/bugtracker-app/actions/runs/40098211874) | Secrets (Gitleaks) | — |
+| `vuln/dockerfile-bad-practices` | VULN-02 `latest`, root, brak przypięć | [40098214043](https://github.com/Krrystian/bugtracker-app/actions/runs/40098214043) | Dockerfile (Hadolint) | Build, SBOM, Trivy, DAST (obraz nie powstaje z Dockerfile po odrzuceniu) |
+| `vuln/image-cve` | VULN-05 obraz bazowy z 2023 r. | [40097682621](https://github.com/Krrystian/bugtracker-app/actions/runs/40097682621) | Image (Trivy) | — |
+
+We wszystkich przypadkach `Push to Docker Hub` i `Notify GitOps repo` są pominięte (gałąź ≠ `main` oraz czerwona bramka) — **żaden podatny obraz nie trafił do rejestru ani do repozytorium GitOps**. `main`: wszystkie 12 jobów zielone, 0 otwartych alertów w GitHub Security, 9 jobów jako wymagane checki ochrony gałęzi.
+
+**Architektura zależności jobów:**
+
+```
+Unit tests ─┐
+Hadolint ───┴─► Build image ─┬─► SBOM ───────────────┐
+                             ├─► Trivy ──────────────┤
+Checkov ─────────────────────┴─► DAST (ZAP) ─────────┤
+Semgrep, OSV-Scanner, Gitleaks (niezależne) ─────────┴─► Push to Docker Hub ─► Notify GitOps (tylko main)
+```
+
+Skanery statyczne nie zależą od siebie nawzajem, więc błąd jednego nie ukrywa raportów pozostałych; joby analizujące obraz lub wdrożenie (Build, SBOM, Trivy, DAST) uruchamiają się dopiero po przejściu bramek, od których logicznie zależą (Hadolint, Checkov).
 
 ## 11a: Semgrep (SAST)
 
