@@ -16,6 +16,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 | VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
 | VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | 14 | ✅ zatrzymany przez Kyverno |
 | VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | 12 | ✅ zatrzymany przez Gitleaks |
+| VULN-11 | `vuln/helm-hostpath` | app | A05:2021 Security Misconfiguration (CWE-250, CWE-552) | **Checkov** | 11c | ✅ zatrzymany przez Checkov |
 
 ---
 
@@ -125,3 +126,13 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Co psujemy:** `environments/development/values.yaml` — `image: docker.io/library/nginx:1.27.3-alpine` zamiast podpisanego `krys3x15/bugtracker` (CWE-494, CWE-345). Symuluje podmianę obrazu w GitOps (np. przez przejęte konto) na obraz spoza potoku CI.
 - **Wynik:** pod odrzucony — „image is not signed with the project Cosign key (cosign.pub)”; 0 podów w `sandbox` (test T3).
 - **Poprawka w `main`:** wyłącznie obrazy z potoku CI, podpisane po digeście kluczem projektu, z podpisaną atestacją SBOM; Kyverno wymusza to przy każdym tworzeniu poda.
+
+---
+
+## VULN-11: montowanie gniazda Dockera węzła (hostPath)
+
+- **Branch:** `vuln/helm-hostpath` (dodany przez członka zespołu 2026-11-05; szczegółowy opis: [`vuln-helm-hostpath.md`](vuln-helm-hostpath.md) na tym branchu)
+- **Bramka:** job `IaC (Checkov)`, reguła **CKV_K8S_27** („Do not expose the docker daemon socket to containers”), poziom error. DAST pominięty (zależy od Checkova), publikacja pominięta. Przebieg z 2026-11-07: [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999).
+- **Co psujemy:** w `charts/bugtracker/templates/deployment.yaml` wolumen `hostPath: /var/run/docker.sock` zamontowany w kontenerze aplikacji. Proces z dostępem do gniazda może sterować demonem kontenerów węzła i uruchomić kontener uprzywilejowany, czyli uciec z kontenera (MITRE ATT&CK T1611).
+- **Kolejne warstwy obrony:** nawet z pominięciem Checkova pod zostałby odrzucony przez Pod Security Admission `restricted` w namespace `bugtracker` (zakaz wolumenów `hostPath`).
+- **Poprawka w `main`:** brak wolumenów `hostPath`; pod ma tylko `emptyDir` (`/tmp`) i Secret montowany tylko do odczytu.
