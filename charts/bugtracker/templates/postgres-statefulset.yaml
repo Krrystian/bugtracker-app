@@ -1,6 +1,8 @@
 {{- if .Values.database.enabled -}}
+# PostgreSQL as a StatefulSet: stable pod name (<name>-0), stable network
+# identity through the headless Service and its own PVC from volumeClaimTemplates.
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "bugtracker.dbName" . }}
   namespace: {{ .Release.Namespace }}
@@ -10,9 +12,15 @@ metadata:
   annotations:
     checkov.io/skip1: CKV_K8S_40=UID 70 is the postgres user of the official image; non-root is enforced (runAsNonRoot, PSA restricted); changing it breaks ownership of existing data
 spec:
+  serviceName: {{ include "bugtracker.dbName" . }}-headless
   replicas: 1
-  strategy:
-    type: Recreate
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  # Keep the database volume when the StatefulSet is deleted or scaled down.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
   selector:
     matchLabels:
       {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 6 }}
@@ -21,9 +29,12 @@ spec:
       labels:
         {{- include "bugtracker.labels" . | nindent 8 }}
         app.kubernetes.io/component: database
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "bugtracker.serviceAccountName" . }}
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 70          # "postgres" user in the alpine image
@@ -40,9 +51,15 @@ spec:
               containerPort: 5432
           env:
             - name: POSTGRES_DB
-              value: {{ .Values.database.name | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bugtracker.fullname" . }}-config
+                  key: DB_NAME
             - name: POSTGRES_USER
-              value: {{ .Values.database.user | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bugtracker.fullname" . }}-config
+                  key: DB_USER
             - name: POSTGRES_PASSWORD_FILE
               value: /run/secrets/bugtracker/db_password
             - name: PGDATA
@@ -71,9 +88,6 @@ spec:
               mountPath: /run/secrets/bugtracker
               readOnly: true
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ include "bugtracker.dbName" . }}-data
         - name: run
           emptyDir: {}
         - name: tmp
@@ -85,4 +99,17 @@ spec:
             items:
               - key: db-password
                 path: db_password
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.database.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.database.persistence.size }}
 {{- end }}

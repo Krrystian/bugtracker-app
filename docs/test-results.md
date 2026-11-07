@@ -4,9 +4,9 @@
 |---|---|---|
 | T1 Blokada i raportowanie podatności kodu (SAST/SCA) | ✅ zaliczony | 2026-10-24 |
 | T2 Centralizacja raportów (SARIF) | ✅ zaliczony | 2026-10-24 |
-| T3 Integralność i weryfikacja podpisów Cosign | ⏳ etap 14 | — |
+| T3 Integralność i weryfikacja podpisów Cosign | ✅ zaliczony | 2026-10-24 |
 | T4 Brama wdrożeniowa | ✅ zaliczony | 2026-10-24 |
-| T5 Szczelność sekretów | ⏳ etap 12 | — |
+| T5 Szczelność sekretów | ✅ zaliczony | 2026-10-24 |
 
 ## T1 Blokada i raportowanie podatności kodu (SAST/SCA)
 
@@ -73,3 +73,85 @@ kubectl -n bugtracker get deploy bugtracker -o jsonpath='{.spec.template.spec.co
 ```
 
 **Wynik:** ✅ zaliczony. Wdrożenie wymaga świadomej decyzji człowieka (PR `development` → `main` w repozytorium GitOps; `main` chroniony, także dla administratora).
+
+## T5 Szczelność sekretów
+
+**Cel:** nowy sekret zaszyfrowany `kubeseal` jako `SealedSecret` w publicznym repozytorium GitOps, wdrożony przez Argo CD → odszyfrowany w klastrze; jawna wartość nie występuje w logach ani w historii git.
+
+**Przebieg (2026-10-24):**
+
+1. Losowa wartość (48 znaków) dla sekretu `bugtracker-t5-demo` (klucz `api-token`) wygenerowana i od razu zaszyfrowana kluczem publicznym kontrolera Sealed Secrets v0.40.0 — nigdzie niezapisana ani niewypisana; do weryfikacji zachowany wyłącznie skrót SHA-256 (poza repo, usunięty po teście).
+2. Plik `environments/development/secrets/bugtracker-t5-demo.sealedsecret.yaml` w [Krrystian/bugtracker-gitops#6](https://github.com/Krrystian/bugtracker-gitops/pull/6) — Gitleaks (wymagany check) przepuścił szyfrogram; PR scalony przez właściciela projektu.
+3. Webhook → Argo CD (trzecie źródło `Application`: katalog `secrets/`) → `SealedSecret` w namespace `bugtracker` → kontroler utworzył `Secret` (ownerReference: `SealedSecret`, warunek `Synced=True`).
+
+**Dowód:**
+
+| Sprawdzenie | Wynik |
+|---|---|
+| Skrót SHA-256 wartości odszyfrowanej w klastrze = skrót wartości oryginalnej | ✅ identyczne |
+| Wystąpienia wartości (jawnej i w base64) w historii git `bugtracker-gitops`, wszystkie gałęzie (26 commitów) | ✅ 0 |
+| jw. w `bugtracker-app`, wszystkie gałęzie (60 commitów) | ✅ 0 |
+| Logi `argocd-application-controller`, `argocd-repo-server`, `argocd-server`, `sealed-secrets-controller` (30 min) | ✅ 0 |
+| Logi CI repozytorium GitOps (5 ostatnich przebiegów) | ✅ 0 |
+
+Dodatkowo: `vuln/plaintext-secret` (jawny `Secret` w repo GitOps) zatrzymany przez Gitleaks ([przebieg 40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420), alert Critical), a do klastra nie trafił (Argo CD śledzi tylko `main`).
+
+**Wynik:** ✅ zaliczony.
+
+## Etap 13: testy bramek skanerów
+
+**Kryteria (CLAUDE.md):** na każdym branchu `vuln/*` pipeline kończy się czerwono na zaplanowanym jobie, obraz **nie** jest publikowany w Docker Hub, brak dispatchu do GitOps, `main` zielony; bramka High/Critical (`exit 1`) dla Semgrep, OSV-Scanner, Checkov, Trivy, ZAP.
+
+**Bramki:** każdy skaner wysyła SARIF do GitHub Security (`if: always()`), a krok *Security gate* (`scripts/sarif-gate.py`) kończy job `exit 1` przy znalezisku High/Critical (`level: error` lub `security-severity ≥ 7.0`). Uzupełnienia: polityki reguł ZAP (`.zap/rules.tsv`) i Hadolinta (`.hadolint.yaml`) — złe praktyki, które narzędzia domyślnie oceniają niżej, podniesione do poziomu blokującego; Gitleaks — każdy wyciek = Critical; Trivy — CVE z dostępną poprawką. Żaden skaner nie ma `continue-on-error` ani `exit-code: 0` bez bramki po nim.
+
+**Weryfikacja (2026-10-24) na wszystkich przebiegach branchy `vuln/*`:**
+
+| Branch | Commitów spoza `main` | Ich tagi w Docker Hub | Ich commity „deploy:” w GitOps | Przebiegów CI | `Push to Docker Hub` / `Notify GitOps repo` zakończone sukcesem | Czerwony job |
+|---|---|---|---|---|---|---|
+| `vuln/sast-code` | 2 | 0 | 0 | 2 | 0 | SAST (Semgrep) |
+| `vuln/sca-deps` | 2 | 0 | 0 | 2 | 0 | SCA (OSV-Scanner) |
+| `vuln/helm-privileged` | 2 | 0 | 0 | 2 | 0 | IaC (Checkov) |
+| `vuln/helm-no-netpol` | 2 | 0 | 0 | 2 | 0 | IaC (Checkov) |
+| `vuln/dast-runtime` | 2 | 0 | 0 | 2 | 0 | DAST (OWASP ZAP) |
+| `vuln/secret-leak` | 2 | 0 | 0 | 2 | 0 | Secrets (Gitleaks) |
+| `vuln/dockerfile-bad-practices` | 2 | 0 | 0 | 2 | 0 | Dockerfile (Hadolint) |
+| `vuln/image-cve` | 1 | 0 | 0 | 1 | 0 | Image (Trivy) |
+
+Metoda: commity branchy spoza `main` (`git rev-list origin/vuln/<x> --not origin/main`) porównane z pełną listą tagów `krys3x15/bugtracker` w Docker Hub (21 tagów, w tym 0 × `latest`) i ze skrótami SHA w commitach `deploy: bugtracker <sha>` na gałęzi `development` repo GitOps (15). **Kontrola pozytywna:** 20 z 21 tagów to dokładnie SHA commitów `main` (21. to tag `dcb8f64` sprzed przepisania historii — repozytorium archiwalne), więc metoda wykrywa opublikowane commity. `main` (`1ffd399`): 12/12 jobów zielonych.
+
+Repo GitOps: `vuln/plaintext-secret` — `Secrets (Gitleaks)` ❌; Argo CD śledzi tylko `main`, sekret nie trafił do klastra.
+
+Testy T1 i T2 (wymagane w etapie 13) — zaliczone, opisane wyżej.
+
+**Wynik:** ✅ etap 13 zaliczony.
+
+## T3 Integralność i weryfikacja podpisów Cosign
+
+**Cel:** w repozytorium GitOps podmiana obrazu w `values.yaml` na losowy, niepodpisany (`vuln/unsigned-image`), wdrożenie w piaskownicy → Kyverno blokuje pod z błędem braku podpisu.
+
+**Mechanizm:**
+- CI (tylko `main`): obraz podpisany **po digeście** (`cosign sign`), SBOM CycloneDX dołączony jako podpisana atestacja (`cosign attest`), oba zweryfikowane kluczem `cosign.pub` w tym samym jobie.
+- Klaster: Kyverno v1.19.1, `ImageValidatingPolicy verify-bugtracker-images` (`infra/kyverno/verify-images.yaml`), `Deny`, namespace'y `bugtracker` i `sandbox`: obraz musi mieć podpis **i** podpisaną atestację SBOM kluczem projektu; tag zamieniany na digest; jedyny wyjątek — PostgreSQL przypięty digestem.
+
+**Przebieg (2026-10-24):**
+
+1. Gałąź `vuln/unsigned-image` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops): `image: docker.io/library/nginx:1.27.3-alpine` (VULN-09).
+2. `Application bugtracker-sandbox` (namespace `sandbox`, ręczna synchronizacja, bez Ingress i bazy) — synchronizacja: Deployment utworzony.
+3. Kyverno odrzucił tworzenie poda:
+
+```
+ReplicaSet/bugtracker-6557cd966b: Error creating: admission webhook
+"ivpol.validate.kyverno.svc-fail-finegrained-verify-bugtracker-images" denied the request:
+Policy verify-bugtracker-images failed: image is not signed with the project Cosign key (cosign.pub)
+```
+
+Liczba podów w `sandbox`: 0.
+
+**Kontrola pozytywna (produkcja, ta sama polityka w trybie `Deny`):** `rollout restart deploy/bugtracker` — nowe pody przyjęte z obrazem `docker.io/krys3x15/bugtracker:1d205e6…@sha256:fb2464faac3be55123ba200bda75013038f915ef15564ee9d2dabb9905cf3fa3` (digest dopisany przez Kyverno), aplikacja dostępna. Weryfikacja podpisu tego digestu: (1) Kyverno przyjął obraz — polityka sprawdza podpis i atestację SBOM; (2) CI ([przebieg 40117933887](https://github.com/Krrystian/bugtracker-app/actions/runs/40117933887), job `Push to Docker Hub`, digest `sha256:fb2464fa…` = indeks obrazu wieloplatformowego): dla podpisu i dla atestacji CycloneDX — „The signatures were verified against the specified public key”, „Existence of the claims in the transparency log was verified offline”. Lokalna próba `cosign verify` tego digestu zakończyła się błędem `TOOMANYREQUESTS` (anonimowy limit Docker Hub) — **nie** sprawdziła podpisu; wcześniej tego dnia lokalnie zweryfikowano analogicznie podpisany obraz `d1f9caf` (podpis i atestacja OK).
+
+**Ustalenia przy wdrażaniu:**
+- `kyverno.io/v1 ClusterPolicy` (`verifyImages`) nie odczytuje podpisów cosign v3 (OCI referrers / Sigstore bundle) — „no signatures found” także dla podpisanego obrazu; przejście na `ImageValidatingPolicy` (sprawdzone na kopii polityki w trybie dry-run przed włączeniem blokady).
+- Kyverno domyślnie mutował też Deployment (autogen) → Argo CD stale OutOfSync; autogen wyłączony — weryfikowane i mutowane są tylko Pody.
+- Anonimowe zapytania Kyverno do Docker Hub trafiły na limit pobrań (`TOOMANYREQUESTS`), przez co przy `failurePolicy: Fail` nie dało się utworzyć nowych podów (produkcja działała na istniejących, restart cofnięty); Kyverno używa teraz tokenu Docker Hub tylko do odczytu (sekret `dockerhub-readonly` w namespace `kyverno`, poza Git).
+
+**Wynik:** ✅ zaliczony.
