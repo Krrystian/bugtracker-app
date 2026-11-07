@@ -1,0 +1,17 @@
+# Non-secret configuration of the app and the database. Secret values
+# (db-password, secret-key) stay in the Secret mounted as files.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+data:
+  DB_HOST: {{ .Values.database.host | default (include "bugtracker.dbName" .) | quote }}
+  DB_PORT: {{ .Values.database.port | quote }}
+  DB_NAME: {{ .Values.database.name | quote }}
+  DB_USER: {{ .Values.database.user | quote }}
+  SECRETS_DIR: /run/secrets/bugtracker
+  ENABLE_DOCS: {{ .Values.app.enableDocs | quote }}
+  COOKIE_SECURE: {{ .Values.app.cookieSecure | quote }}

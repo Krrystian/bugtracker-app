@@ -3,6 +3,8 @@
 Prosty bugtracker (FastAPI + PostgreSQL) — aplikacja do projektu „Bezpieczny potok GitOps (DevSecOps)”.
 Gałąź `main` to wersja secure. Podatne warianty żyją wyłącznie na gałęziach `vuln/*`.
 
+**Nowa osoba w zespole?** Zacznij od [docs/zespol-start.md](docs/zespol-start.md) — uruchomienie w Docker Compose, testy i pełny klaster jedną komendą (`scripts/bootstrap-cluster.sh`).
+
 ## Uruchomienie w Dockerze (zalecane)
 
 Wymaga Docker Desktop i pliku `.env` (skopiuj z `.env.example`, uzupełnij `DB_PASSWORD` i `SECRET_KEY`).
@@ -18,7 +20,7 @@ docker compose down -v         # stop + usunięcie danych
 
 Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
-## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)
+## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)    
 
 Wymaga włączonego Kubernetes w Docker Desktop (kontekst `docker-desktop`) i kontrolera Ingress Traefik.
 
@@ -157,6 +159,34 @@ push/merge na main ─► CI: Unit tests → Build image → Push to Docker Hub 
 ```
 
 Job `Notify GitOps repo` działa tylko na `main` i tylko po zielonych testach, buildzie i publikacji. Używa sekretu `GITOPS_DISPATCH_TOKEN` (fine-grained PAT: tylko repo `bugtracker-gitops`, Contents read/write).
+
+## Sekrety w klastrze (etap 12)
+
+Od etapu 12 sekret aplikacji `bugtracker-secrets` jest zarządzany przez **Sealed Secrets**: zaszyfrowany plik `SealedSecret` leży w repozytorium GitOps (`environments/development/secrets/`), Argo CD go wdraża, a kontroler w klastrze (v0.40.0, `kube-system`) odszyfrowuje go do zwykłego `Secret`. Instalacja kontrolera:
+
+```bash
+curl -fsSLo controller.yaml https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.40.0/controller.yaml
+echo "ac8aabccdd9110430d117501705818115b2ab0993700a9c118d4d42cf4015a17  controller.yaml" | shasum -a 256 -c -
+kubectl apply -f controller.yaml
+```
+
+Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium GitOps. Ręczne `kubectl create secret` z etapów 3–5 zostało zastąpione (sekret przejęty przez kontroler bez usuwania).
+
+## Podpisy obrazów i admission control (etap 14)
+
+- **Cosign (CI):** job `Push to Docker Hub` podpisuje obraz **po digeście** kluczem z sekretów `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD`, dołącza SBOM (CycloneDX) jako podpisane poświadczenie (*attestation*) i weryfikuje oba kluczem publicznym `cosign.pub` (w repozytorium).
+- **Kyverno (klaster):** `infra/kyverno/verify-images.yaml` — `ImageValidatingPolicy`: w namespace'ach `bugtracker` i `sandbox` pod może uruchomić wyłącznie obraz z podpisem **i** podpisaną atestacją SBOM (CycloneDX) kluczem projektu (wyjątek: PostgreSQL przypięty digestem); tag zamieniany na zweryfikowany digest. Starszy typ `ClusterPolicy` (`verifyImages`) nie odczytuje podpisów w formacie cosign v3.
+
+```bash
+# instalacja Kyverno v1.19.1 (SHA-256 zgodny z digestem zasobu wydania na GitHub)
+curl -fsSLo install.yaml https://github.com/kyverno/kyverno/releases/download/v1.19.1/install.yaml
+shasum -a 256 install.yaml   # d3322cb346d3d42dd0f41e230b0d1d7bc5619960e1c36fdac4d9151d724b88e6
+kubectl apply --server-side -f install.yaml
+kubectl apply -f infra/kyverno/verify-images.yaml
+
+# ręczna weryfikacja podpisu obrazu
+cosign verify --key cosign.pub docker.io/krys3x15/bugtracker@sha256:<digest>
+```
 
 ## Uruchomienie lokalne (bez Dockera)
 

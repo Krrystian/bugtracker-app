@@ -95,6 +95,44 @@ networkPolicy:
       matchLabels:
         app.kubernetes.io/name: traefik
 
+# Namespace-wide cap (ResourceQuota). Requests now: app 2x(50m/96Mi) + surge
+# pod + db 100m/128Mi = 250m/416Mi; limits 2000m/1280Mi.
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "3"
+    limits.memory: 2Gi
+    requests.storage: 5Gi
+    persistentvolumeclaims: "3"
+    pods: "10"
+    services: "5"
+    services.loadbalancers: "0"
+    services.nodeports: "0"
+
+# Per-container / per-PVC defaults and bounds (LimitRange).
+limitRange:
+  enabled: true
+  container:
+    default:
+      cpu: 250m
+      memory: 256Mi
+    defaultRequest:
+      cpu: 50m
+      memory: 64Mi
+    min:
+      cpu: 10m
+      memory: 32Mi
+    max:
+      cpu: "1"
+      memory: 1Gi
+  pvc:
+    min:
+      storage: 100Mi
+    max:
+      storage: 2Gi
+
 nodeSelector: {}
 tolerations: []
 affinity: {}
