@@ -17,6 +17,11 @@ FROM ${PYTHON_IMAGE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH
+# Security update not yet in the base image: CVE-2026-109518 (apt < 3.0.4).
+# Remove once the pinned base image ships apt >= 3.0.4.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /srv
