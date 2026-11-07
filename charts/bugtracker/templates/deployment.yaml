@@ -20,6 +20,9 @@ spec:
       labels:
         {{- include "bugtracker.labels" . | nindent 8 }}
         app.kubernetes.io/component: app
+      annotations:
+        # Roll the pods when the ConfigMap changes (env vars are read at start).
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "bugtracker.serviceAccountName" . }}
       automountServiceAccountToken: false
@@ -32,22 +35,11 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.app.containerPort }}
-          env:
-            - name: DB_HOST
-              value: {{ .Values.database.host | default (include "bugtracker.dbName" .) | quote }}
-            - name: DB_PORT
-              value: {{ .Values.database.port | quote }}
-            - name: DB_NAME
-              value: {{ .Values.database.name | quote }}
-            - name: DB_USER
-              value: {{ .Values.database.user | quote }}
-            # Secrets are mounted as files (not env vars), see volumes below.
-            - name: SECRETS_DIR
-              value: /run/secrets/bugtracker
-            - name: ENABLE_DOCS
-              value: {{ .Values.app.enableDocs | quote }}
-            - name: COOKIE_SECURE
-              value: {{ .Values.app.cookieSecure | quote }}
+          # Non-secret settings from the ConfigMap; secrets are mounted as
+          # files (not env vars), see volumes below.
+          envFrom:
+            - configMapRef:
+                name: {{ include "bugtracker.fullname" . }}-config
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:

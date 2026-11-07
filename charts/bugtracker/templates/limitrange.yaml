@@ -1,0 +1,17 @@
+{{- if .Values.limitRange.enabled -}}
+# Per-container defaults and bounds: a container without resources gets the
+# defaults; one asking for more than "max" is rejected at admission.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ include "bugtracker.fullname" . }}-limits
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      {{- toYaml .Values.limitRange.container | nindent 6 }}
+    - type: PersistentVolumeClaim
+      {{- toYaml .Values.limitRange.pvc | nindent 6 }}
+{{- end }}
