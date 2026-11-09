@@ -8,3 +8,4 @@ checkov/
 zap/
 trivy/
 trivy-mapped.sarif
+.DS_Store
