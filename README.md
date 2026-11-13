@@ -39,7 +39,7 @@ docker compose down            # stop (dane zostają w wolumenie db-data)
 docker compose down -v         # stop + usunięcie danych
 ```
 
-Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
+Obraz: multi-stage, przypięty `python:3.12.16-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
 ## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)    
 

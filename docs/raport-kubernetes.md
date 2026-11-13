@@ -737,7 +737,7 @@ Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` 
 
 **Znane ograniczenia:**
 - **Cloudflare Quick Tunnel** (bez konta i domeny) dostaje nowy adres po każdym restarcie poda `cloudflared`. Webhook GitHub trzeba wtedy przestawić skryptem `scripts/update-webhook-url.sh`. Do tego czasu Argo CD synchronizuje się co 3 minuty (odpytywanie). Trwałe rozwiązanie to nazwany tunel z własną domeną.
-- **Tymczasowa aktualizacja `apt` w Dockerfile:** 2026-11-04 opublikowano CVE-2026-109518 (High) w `apt` 3.0.3. Najnowszy obraz bazowy `python:3.12.15-slim-trixie` nie ma jeszcze poprawki, więc Trivy zablokował build. Etap runtime instaluje `apt=3.0.4` (przypięta wersja). Do usunięcia, gdy obraz bazowy dostanie poprawkę.
+- **Tymczasowa aktualizacja `zlib` w Dockerfile:** w listopadzie 2026 opublikowano dwie podatności High w `zlib` (CVE-2026-76844, CVE-2026-85091). Obraz bazowy `python:3.12.16-slim-trixie` nie ma jeszcze poprawki, więc Dockerfile instaluje poprawioną wersję `zlib1g` (przypiętą). Do usunięcia, gdy obraz bazowy dostanie poprawkę.
 - **Jedna replika PostgreSQL:** StatefulSet zapewnia stałą tożsamość i trwały wolumen, ale nie wysoką dostępność. Restart bazy oznacza krótką przerwę. Replikacja (np. operator CloudNativePG) wykracza poza zakres projektu.
 - **Klaster jednowęzłowy (k3d) z `local-path`:** wolumen jest związany z węzłem. Na produkcji potrzebna byłaby sieciowa klasa pamięci i kopie zapasowe bazy.
 - **Kopia klucza kontrolera Sealed Secrets** musi być przechowywana poza klastrem. Bez niej po odtworzeniu klastra istniejących `SealedSecret` nie da się odszyfrować.
