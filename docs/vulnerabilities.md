@@ -16,6 +16,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 | VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
 | VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | 14 | ✅ zatrzymany przez Kyverno |
 | VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | 12 | ✅ zatrzymany przez Gitleaks |
+| VULN-11 | `vuln/helm-hostpath` | app | A05:2021 Security Misconfiguration (CWE-250, CWE-552) | **Checkov** | 11c | ✅ zatrzymany przez Checkov |
 
 ---
 
@@ -96,7 +97,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Branch:** `vuln/dockerfile-bad-practices`
 - **Bramka:** job `Dockerfile (Hadolint)` (polityka `.hadolint.yaml`). `Build image` i joby zależne (SBOM, Trivy, DAST) są pominięte — obraz nie powstaje z Dockerfile, który nie przeszedł polityki. Semgrep pomija Dockerfile (`--exclude=Dockerfile`) — jeden problem, jedna bramka.
 - **Co psujemy:** `FROM python:latest` w obu etapach (DL3007), `apt-get install -y curl` bez wersji (DL3008), `pip install httpie` bez wersji (DL3013), `curl … | python -` bez `pipefail` (DL4006), `USER root` (DL3002).
-- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.15-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
+- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.16-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
 
 ## VULN-05: obraz bazowy z podatnymi pakietami systemu
 
@@ -104,7 +105,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Bramka:** job `Image (Trivy)`. Pozostałe joby zielone (obraz przypięty tagiem i digestem — Hadolint go akceptuje; aplikacja działa — DAST przechodzi).
 - **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
 - **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
-- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.15-slim-trixie`, Debian 13.7) przypięty digestem; 0 CVE z dostępną poprawką.
+- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.16-slim-trixie`, Debian 13.7) przypięty digestem, poprawki bezpieczeństwa doinstalowane w Dockerfile; 0 CVE z dostępną poprawką.
 
 ---
 
@@ -125,3 +126,13 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Co psujemy:** `environments/development/values.yaml` — `image: docker.io/library/nginx:1.27.3-alpine` zamiast podpisanego `krys3x15/bugtracker` (CWE-494, CWE-345). Symuluje podmianę obrazu w GitOps (np. przez przejęte konto) na obraz spoza potoku CI.
 - **Wynik:** pod odrzucony — „image is not signed with the project Cosign key (cosign.pub)”; 0 podów w `sandbox` (test T3).
 - **Poprawka w `main`:** wyłącznie obrazy z potoku CI, podpisane po digeście kluczem projektu, z podpisaną atestacją SBOM; Kyverno wymusza to przy każdym tworzeniu poda.
+
+---
+
+## VULN-11: montowanie gniazda Dockera węzła (hostPath)
+
+- **Branch:** `vuln/helm-hostpath` (dodany przez członka zespołu 2026-11-05; szczegółowy opis: [`vuln-helm-hostpath.md`](vuln-helm-hostpath.md) na tym branchu)
+- **Bramka:** job `IaC (Checkov)`, reguła **CKV_K8S_27** („Do not expose the docker daemon socket to containers”), poziom error. DAST pominięty (zależy od Checkova), publikacja pominięta. Przebieg z 2026-11-07: [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999).
+- **Co psujemy:** w `charts/bugtracker/templates/deployment.yaml` wolumen `hostPath: /var/run/docker.sock` zamontowany w kontenerze aplikacji. Proces z dostępem do gniazda może sterować demonem kontenerów węzła i uruchomić kontener uprzywilejowany, czyli uciec z kontenera (MITRE ATT&CK T1611).
+- **Kolejne warstwy obrony:** nawet z pominięciem Checkova pod zostałby odrzucony przez Pod Security Admission `restricted` w namespace `bugtracker` (zakaz wolumenów `hostPath`).
+- **Poprawka w `main`:** brak wolumenów `hostPath`; pod ma tylko `emptyDir` (`/tmp`) i Secret montowany tylko do odczytu.
