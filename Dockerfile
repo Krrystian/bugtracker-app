@@ -20,7 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH
 # VULN-05: no OS security updates on top of the outdated base image
-# (main upgrades apt to 3.0.4 here; Debian 12 has no such package version).
+# (main upgrades zlib here; Debian 12 has no such package version).
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /srv
