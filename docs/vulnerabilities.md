@@ -97,7 +97,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Branch:** `vuln/dockerfile-bad-practices`
 - **Bramka:** job `Dockerfile (Hadolint)` (polityka `.hadolint.yaml`). `Build image` i joby zależne (SBOM, Trivy, DAST) są pominięte — obraz nie powstaje z Dockerfile, który nie przeszedł polityki. Semgrep pomija Dockerfile (`--exclude=Dockerfile`) — jeden problem, jedna bramka.
 - **Co psujemy:** `FROM python:latest` w obu etapach (DL3007), `apt-get install -y curl` bez wersji (DL3008), `pip install httpie` bez wersji (DL3013), `curl … | python -` bez `pipefail` (DL4006), `USER root` (DL3002).
-- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.15-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
+- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.16-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
 
 ## VULN-05: obraz bazowy z podatnymi pakietami systemu
 
@@ -105,7 +105,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Bramka:** job `Image (Trivy)`. Pozostałe joby zielone (obraz przypięty tagiem i digestem — Hadolint go akceptuje; aplikacja działa — DAST przechodzi).
 - **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
 - **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
-- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.15-slim-trixie`, Debian 13.7) przypięty digestem; 0 CVE z dostępną poprawką.
+- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.16-slim-trixie`, Debian 13.7) przypięty digestem, poprawki bezpieczeństwa doinstalowane w Dockerfile; 0 CVE z dostępną poprawką.
 
 ---
 
