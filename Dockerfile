@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Base image pinned to an exact release and digest (never "latest").
-ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
+ARG PYTHON_IMAGE=python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # --- Stage 1: install dependencies into an isolated virtualenv ---------------
 FROM ${PYTHON_IMAGE} AS builder
@@ -17,10 +17,10 @@ FROM ${PYTHON_IMAGE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH
-# Security update not yet in the base image: CVE-2026-109518 (apt < 3.0.4).
-# Remove once the pinned base image ships apt >= 3.0.4.
+# Security update not yet in the base image: CVE-2026-76844, CVE-2026-85091 (zlib).
+# Remove once the pinned base image ships zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app

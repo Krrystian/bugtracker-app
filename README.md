@@ -5,6 +5,27 @@ Gałąź `main` to wersja secure. Podatne warianty żyją wyłącznie na gałęz
 
 **Nowa osoba w zespole?** Zacznij od [docs/zespol-start.md](docs/zespol-start.md) — uruchomienie w Docker Compose, testy i pełny klaster jedną komendą (`scripts/bootstrap-cluster.sh`).
 
+## Obiekty Kubernetes (projekt)
+
+Pełny raport wdrożenia z poleceniami, wynikami i testami: **[docs/raport-kubernetes.md](docs/raport-kubernetes.md)**.
+
+| Obiekt | Plik (wykres Helm `charts/bugtracker/`) |
+|---|---|
+| Deployment (aplikacja) | `templates/deployment.yaml` |
+| StatefulSet (PostgreSQL) | `templates/postgres-statefulset.yaml` |
+| Service (ClusterIP + headless) | `templates/service.yaml`, `templates/postgres-service.yaml` |
+| NetworkPolicy (default-deny, app, baza) | `templates/networkpolicy.yaml` |
+| Ingress (Traefik) | `templates/ingress.yaml` |
+| PVC | `volumeClaimTemplates` w `templates/postgres-statefulset.yaml` |
+| ConfigMap | `templates/configmap.yaml` |
+| Secret | `SealedSecret` w repo [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops) (`environments/development/secrets/`), montowany jako pliki |
+| Requests i Limits | `values.yaml` (`app.resources`, `database.resources`) |
+| ResourceQuota | `templates/resourcequota.yaml` |
+| LimitRange | `templates/limitrange.yaml` |
+| ServiceAccount | `templates/serviceaccount.yaml` |
+
+Manifesty statyczne (bez Helma, etap 3): `k8s/`. Argo CD `Application` i wartości środowiska: repo GitOps. Polityka Kyverno: `infra/kyverno/`.
+
 ## Uruchomienie w Dockerze (zalecane)
 
 Wymaga Docker Desktop i pliku `.env` (skopiuj z `.env.example`, uzupełnij `DB_PASSWORD` i `SECRET_KEY`).
@@ -18,7 +39,7 @@ docker compose down            # stop (dane zostają w wolumenie db-data)
 docker compose down -v         # stop + usunięcie danych
 ```
 
-Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
+Obraz: multi-stage, przypięty `python:3.12.16-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
 ## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)    
 
