@@ -2,18 +2,18 @@
 
 Raporty wszystkich skanerów trafiają w formacie SARIF do **Security → Code scanning** repozytorium (kategoria = nazwa skanera). Bramka `scripts/sarif-gate.py` przerywa job, gdy jest choć jedno znalezisko High/Critical (poziom `error` lub `security-severity` ≥ 7.0); znaleziska niższej wagi są tylko raportowane.
 
-| Podetap | Skaner | Rodzaj | `main` | Branch demonstracyjny |
-|---|---|---|---|---|
-| 11a | Semgrep 1.180.0 | SAST | ✅ 0 znalezisk | `vuln/sast-code` ❌ (2× High, 1× Medium) |
-| 11b | OSV-Scanner 2.6.0 | SCA | ✅ 0 znalezisk | `vuln/sca-deps` ❌ ([run 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495), critical CVE-2018-20060) — test T1 |
-| 11c | Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
-| 11d | Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
-| 11e | OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK) | `vuln/dast-runtime` ❌ ([run 40088388516](https://github.com/Krrystian/bugtracker-app/actions/runs/40088388516), 4 reguły FAIL, 17 wystąpień) |
-| 11f | Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` ❌ ([run 40092751830](https://github.com/Krrystian/bugtracker-app/actions/runs/40092751830), critical `generic-api-key`) |
-| 11g | Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` ❌ ([run 40096588165](https://github.com/Krrystian/bugtracker-app/actions/runs/40096588165), 6 blokujących) |
-| 11h | Trivy 0.75.0 | CVE w pakietach systemu obrazu | ✅ 0 CVE z dostępną poprawką (164 bez poprawki — raport) | `vuln/image-cve` ❌ ([run 40097682621](https://github.com/Krrystian/bugtracker-app/actions/runs/40097682621), 90 High/Critical) |
+| Skaner | Rodzaj | `main` | Branch demonstracyjny |
+|---|---|---|---|
+| Semgrep 1.180.0 | SAST | ✅ 0 znalezisk | `vuln/sast-code` ❌ (2× High, 1× Medium) |
+| OSV-Scanner 2.6.0 | SCA | ✅ 0 znalezisk | `vuln/sca-deps` ❌ ([run 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495), critical CVE-2018-20060) — test T1 |
+| Checkov 3.3.26 | IaC (Helm/K8s) | ✅ 0 błędów (458 testów, 5 udokumentowanych wyjątków) | `vuln/helm-privileged` ❌ ([run 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628), 15× High), `vuln/helm-no-netpol` ❌ ([run 40078821444](https://github.com/Krrystian/bugtracker-app/actions/runs/40078821444), CKV2_K8S_6) |
+| Syft 1.54.1 | SBOM (CycloneDX) | artefakt `sbom-cyclonedx` (137 komponentów) | n/d — inwentarz, nie bramka |
+| OWASP ZAP 2.17 (`20261008`) | DAST (baseline) + polityka `.zap/rules.tsv` | ✅ 0 naruszeń polityki (58 reguł OK) | `vuln/dast-runtime` ❌ ([run 40088388516](https://github.com/Krrystian/bugtracker-app/actions/runs/40088388516), 4 reguły FAIL, 17 wystąpień) |
+| Gitleaks 8.30.1 | sekrety w kodzie i historii git | ✅ 0 wycieków | `vuln/secret-leak` ❌ ([run 40092751830](https://github.com/Krrystian/bugtracker-app/actions/runs/40092751830), critical `generic-api-key`) |
+| Hadolint 2.15.1 + polityka `.hadolint.yaml` | lint Dockerfile | ✅ 0 uwag | `vuln/dockerfile-bad-practices` ❌ ([run 40096588165](https://github.com/Krrystian/bugtracker-app/actions/runs/40096588165), 6 blokujących) |
+| Trivy 0.75.0 | CVE w pakietach systemu obrazu | ✅ 0 CVE z dostępną poprawką (164 bez poprawki — raport) | `vuln/image-cve` ❌ ([run 40097682621](https://github.com/Krrystian/bugtracker-app/actions/runs/40097682621), 90 High/Critical) |
 
-## Podsumowanie etapu 11: każdy branch `vuln/*` pada na swojej bramce
+## Podsumowanie: każdy branch `vuln/*` pada na swojej bramce
 
 Stan po aktualizacji wszystkich branchy do bieżącego `main` (2026-10-24) — każdy przebieg uruchamia **wszystkie** skanery:
 
@@ -42,7 +42,7 @@ Semgrep, OSV-Scanner, Gitleaks (niezależne) ─────────┴─�
 
 Skanery statyczne nie zależą od siebie nawzajem, więc błąd jednego nie ukrywa raportów pozostałych; joby analizujące obraz lub wdrożenie (Build, SBOM, Trivy, DAST) uruchamiają się dopiero po przejściu bramek, od których logicznie zależą (Hadolint, Checkov).
 
-## 11a: Semgrep (SAST)
+## Semgrep (SAST)
 
 **Czym jest SAST:** analiza statyczna kodu źródłowego, bez uruchamiania aplikacji. Skaner szuka wzorców typowych błędów: sklejania SQL z danymi użytkownika, wyłączonego escapowania HTML, słabej kryptografii, sekretów w kodzie.
 
@@ -63,7 +63,7 @@ Na `vuln/sast-code` pozostałe joby: `Unit tests` ✅, `Build image` ✅, `Push 
 | XSS | `jinja2-autoescape-disabled-in-template` | `app/templates/search.html:11` | error → **blokuje** | **tak**: `q=<script>...</script>` trafia do HTML bez escapowania (w `main` dodatkowo zablokowałoby to CSP) |
 | MD5 | `insecure-hash-algorithm-md5` | `app/web.py:301` | warning → raport | **niskie** w tym miejscu (odcisk zapytania, nie hasło), ale w kontekście haseł/podpisów byłoby krytyczne |
 
-## 11b: OSV-Scanner (SCA)
+## OSV-Scanner (SCA)
 
 **Czym jest SCA:** analiza składu oprogramowania — skaner nie czyta naszego kodu, tylko **listę bibliotek z wersjami** i porównuje ją z bazą znanych podatności (OSV.dev: CVE, GHSA, PYSEC). Większość kodu aplikacji to cudze biblioteki, więc dziura w bibliotece to dziura w aplikacji.
 
@@ -79,7 +79,7 @@ Po zmianie: `main` — 76 pakietów, **0 podatności**.
 
 **Wyniki `vuln/sca-deps` (2026-10-24):** pada wyłącznie `SCA (OSV-Scanner)` na kroku bramki; 48 alertów, najpoważniejszy critical CVE-2018-20060 w `urllib3@1.22`. Szczegóły: `docs/test-results.md` (T1).
 
-## 11c: Checkov (IaC — Helm i Kubernetes)
+## Checkov (IaC — Helm i Kubernetes)
 
 **Czym jest skan IaC:** sprawdza nie kod aplikacji, tylko **konfigurację wdrożenia** (Infrastructure as Code): czy kontener działa jako root lub `privileged`, czy ma limity zasobów, czy system plików jest tylko do odczytu, czy jest NetworkPolicy, czy obraz ma przypiętą wersję itd.
 
@@ -93,7 +93,7 @@ Po zmianie: `main` — 76 pakietów, **0 podatności**.
 | CKV_K8S_35 | sekrety jako zmienne środowiskowe | **poprawione**: sekrety montowane jako pliki (`/run/secrets/bugtracker`, tryb 0440), aplikacja czyta je przez `SECRETS_DIR`, PostgreSQL przez `POSTGRES_PASSWORD_FILE` |
 | CKV_K8S_15 | `imagePullPolicy` ≠ `Always` | **poprawione** w wykresie; w `k8s/` wyjątek (lokalny obraz Docker Desktop) |
 | CKV2_K8S_6 | pody bez NetworkPolicy (`k8s/`) | **poprawione**: `k8s/networkpolicy.yaml` (te same reguły co wykres) |
-| CKV_K8S_43 | obraz bez digestu | wyjątek: tag = niezmienny SHA commita; digest i podpis wymusza Kyverno (etap 14) |
+| CKV_K8S_43 | obraz bez digestu | wyjątek: tag = niezmienny SHA commita; digest i podpis wymusza Kyverno |
 | CKV_K8S_40 | niski UID (PostgreSQL 70) | wyjątek: użytkownik `postgres` oficjalnego obrazu, non-root wymuszony (`runAsNonRoot`, PSA restricted); zmiana UID psuje własność danych na PVC |
 
 Wyjątki są adnotacjami `checkov.io/skip*` przy konkretnym zasobie, z uzasadnieniem; w raporcie widoczne jako pominięte (nie blokują). Żadna reguła nie jest wyłączona globalnie.
@@ -111,15 +111,15 @@ Po zmianach: `helm` 184 ✅ / 0 ❌ / 2 wyjątki, `kubernetes` 274 ✅ / 0 ❌ /
 
 **Wyjątki w GitHub Security:** SARIF Checkova oznacza pominięte checki polem `suppressions` (z uzasadnieniem), ale GitHub pokazuje je jako otwarte alerty. 5 alertów (CKV_K8S_43 ×2, CKV_K8S_40 ×2, CKV_K8S_15) zamknięto ręcznie w GitHub jako *won't fix* z tym samym uzasadnieniem (decyzja właściciela projektu). Na `main`: 0 otwartych alertów.
 
-## 11d: SBOM (CycloneDX)
+## SBOM (CycloneDX)
 
-**Czym jest SBOM:** *Software Bill of Materials* — spis wszystkich składników obrazu (pakiety systemu i biblioteki), z wersjami, licencjami i identyfikatorami `purl`. Nie jest bramką: to inwentarz, dzięki któremu po ogłoszeniu nowej podatności (np. w `openssl`) od razu wiadomo, które obrazy ją zawierają, bez ponownego skanowania. W etapie 14 SBOM jest podpisywany Cosignem jako *attestation* obrazu.
+**Czym jest SBOM:** *Software Bill of Materials* — spis wszystkich składników obrazu (pakiety systemu i biblioteki), z wersjami, licencjami i identyfikatorami `purl`. Nie jest bramką: to inwentarz, dzięki któremu po ogłoszeniu nowej podatności (np. w `openssl`) od razu wiadomo, które obrazy ją zawierają, bez ponownego skanowania. Dodatkowo SBOM jest podpisywany Cosignem jako *attestation* obrazu.
 
 **Konfiguracja:** job `SBOM (CycloneDX)` — Syft 1.54.1 skanuje obraz `linux/amd64` zbudowany w jobie `Build image` (przekazany jako artefakt `image-amd64`); tylko pakiety (`SYFT_FILE_METADATA_SELECTION=none` — bez 2751 wpisów pojedynczych plików). Wynik: artefakt przebiegu **`sbom-cyclonedx`** (`sbom.cdx.json`, przechowywany 90 dni) + podsumowanie w zakładce przebiegu. `Push to Docker Hub` wymaga istnienia SBOM.
 
 **Zawartość (obraz z `main`, lokalnie):** CycloneDX 1.7, **137 komponentów**: 87 pakietów Debiana (`pkg:deb/...`, np. `openssl 3.5.7-1~deb13u3`), 36 bibliotek Pythona (`pkg:pypi/...`, np. `fastapi 0.159.0` MIT), interpreter `python 3.12.15`, system `debian 13`.
 
-## 11e: OWASP ZAP (DAST)
+## OWASP ZAP (DAST)
 
 **Czym jest DAST:** *Dynamic Application Security Testing* — test **działającej** aplikacji z zewnątrz, przez HTTP, bez dostępu do kodu. Wykrywa to, czego nie widać w kodzie ani w konfiguracji: brakujące nagłówki bezpieczeństwa, niebezpieczne flagi ciasteczek, ujawnianie informacji w odpowiedziach serwera, błędne przekierowania.
 
@@ -136,7 +136,7 @@ Po zmianach: `helm` 184 ✅ / 0 ❌ / 2 wyjątki, `kubernetes` 274 ✅ / 0 ❌ /
 
 **Wynik `main` (lokalnie, obraz `e68c74c`):** 58 reguł bez uwag, 0 Low/Medium/High; 3 alerty *Informational* (wykryty formularz logowania, odpowiedzi z ciasteczkiem sesji, „Cookie Poisoning” — parametr formularza odbity w nazwie/wartości ciasteczka CSRF) — opisują działanie aplikacji, nie podatności. Nagłówki bezpieczeństwa (CSP, `X-Frame-Options`, `nosniff`), flagi ciasteczek (`HttpOnly`, `SameSite=Strict`) i brak ujawniania wersji — bez uwag.
 
-**Polityka reguł ZAP (`.zap/rules.tsv`) — decyzja właściciela projektu (2026-10-24):** skan pasywny ZAP ocenia błędy konfiguracji odpowiedzi (nagłówki, ciasteczka) najwyżej jako *Medium*, więc ogólna bramka High/Critical nigdy by ich nie zatrzymała. Zamiast obniżać próg dla wszystkich alertów, projekt ma **jawną listę reguł, które blokują** (`FAIL`): brak CSP (10038), brak ochrony przed clickjackingiem (10020), brak `X-Content-Type-Options` (10021), ujawnianie wersji w `Server` (10036) i `X-Powered-By` (10037), ciasteczko bez `HttpOnly` (10010) i `SameSite` (10054), brak tokenów anty-CSRF (10202). `scripts/zap-to-sarif.py --policy` zgłasza je jako `error` / 8.0; pozostałe alerty ZAP są tylko raportowane. Celowo pominięto 10011 (ciasteczko bez `Secure`) — tymczasowy klaster DAST działa po HTTP; produkcyjnie `COOKIE_SECURE=true` za TLS. To jedyne odstępstwo od reguły High/Critical z CLAUDE.md i dotyczy tylko ZAP.
+**Polityka reguł ZAP (`.zap/rules.tsv`) — decyzja właściciela projektu (2026-10-24):** skan pasywny ZAP ocenia błędy konfiguracji odpowiedzi (nagłówki, ciasteczka) najwyżej jako *Medium*, więc ogólna bramka High/Critical nigdy by ich nie zatrzymała. Zamiast obniżać próg dla wszystkich alertów, projekt ma **jawną listę reguł, które blokują** (`FAIL`): brak CSP (10038), brak ochrony przed clickjackingiem (10020), brak `X-Content-Type-Options` (10021), ujawnianie wersji w `Server` (10036) i `X-Powered-By` (10037), ciasteczko bez `HttpOnly` (10010) i `SameSite` (10054), brak tokenów anty-CSRF (10202). `scripts/zap-to-sarif.py --policy` zgłasza je jako `error` / 8.0; pozostałe alerty ZAP są tylko raportowane. Celowo pominięto 10011 (ciasteczko bez `Secure`) — tymczasowy klaster DAST działa po HTTP; produkcyjnie `COOKIE_SECURE=true` za TLS. To jedyne odstępstwo od reguły High/Critical przyjętej w projekcie i dotyczy tylko ZAP.
 
 Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 
@@ -144,7 +144,7 @@ Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 
 **Alerty informacyjne:** ZAP zgłasza też alerty *Informational* (np. „Authentication Request Identified”, „Session Management Response Identified”) — opisują działanie aplikacji, nie podatności. Od tej zmiany nie trafiają do SARIF (chyba że są w polityce), zostają w pełnym raporcie `zap-report`; wcześniej zaśmiecały GitHub Security na `main` (8 alertów *note*).
 
-## 11f: Gitleaks (sekrety)
+## Gitleaks (sekrety)
 
 **Czym jest skan sekretów:** wyszukiwanie haseł, kluczy API, tokenów i kluczy prywatnych w kodzie **oraz w całej historii git**. Usunięcie sekretu w kolejnym commicie go nie unieważnia — stara wersja nadal jest w repozytorium (a w publicznym repo — w internecie); jedyna poprawka to unieważnienie i wymiana sekretu.
 
@@ -156,7 +156,7 @@ Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 
 **Wynik `vuln/secret-leak` (2026-10-24):** pada wyłącznie `Secrets (Gitleaks)` na kroku bramki; wszystkie pozostałe joby (łącznie z DAST) zielone, publikacja pominięta. Alert **critical** `generic-api-key` w `app/payments.py:8`. Wartość jest losowa i nie działa w żadnej usłudze; dzięki `--redact` nie ma jej w logach ani w raporcie. **Realne ryzyko — tak (dla prawdziwego klucza):** każdy, kto ma dostęp do repozytorium (tu: publicznego), może go użyć; usunięcie z kodu nie wystarcza — klucz trzeba unieważnić. Zewnętrzny GitGuardian nie zareagował — sprawdza tylko Pull Requesty, a branche `vuln/*` ich nie mają.
 
-## 11g: Hadolint (Dockerfile)
+## Hadolint (Dockerfile)
 
 **Czym jest lint Dockerfile:** sprawdzenie pliku budującego obraz pod kątem dobrych praktyk: przypięte wersje (obrazu bazowego, pakietów `apt`/`pip`), brak roota, `COPY` zamiast `ADD`, brak zbędnej pamięci podręcznej, `pipefail` w potokach; polecenia `RUN` dodatkowo sprawdza ShellCheck.
 
@@ -168,7 +168,7 @@ Wersja secure z polityką: `FAIL-NEW: 0`, 58 reguł OK → bramka przechodzi.
 
 **Wynik `vuln/dockerfile-bad-practices` (2026-10-24):** pada wyłącznie `Dockerfile (Hadolint)`; `Unit tests`, Semgrep, OSV, Gitleaks, Checkov zielone; `Build image`, `SBOM`, `DAST` i publikacja **pominięte** (nie powstał obraz z Dockerfile, który nie przeszedł polityki). Alerty: DL3007 `latest` (linie 7, 21), DL3008 nieprzypięte `apt` (16), DL3013 nieprzypięty `pip` (17), DL4006 brak `pipefail` (18), DL3002 `USER root` (32) + informacyjne DL3015, DL3066. **Realne ryzyko — tak:** `latest` = każdy build może dostać inny system (niepowtarzalne, niezweryfikowane obrazy); nieprzypięte pakiety = jak wyżej + podatność na podmianę pakietu; skrypt z internetu wprost do interpretera = wykonanie dowolnego kodu, jeśli serwer zostanie przejęty; root w kontenerze = po przejęciu aplikacji atakujący ma pełne uprawnienia w kontenerze.
 
-## 11h: Trivy (obraz)
+## Trivy (obraz)
 
 **Czym jest skan obrazu:** sprawdzenie **pakietów systemu operacyjnego** w zbudowanym obrazie (tu Debian: `openssl`, `glibc`, `expat`…) w bazach CVE dystrybucji. Biblioteki Pythona sprawdza SCA (OSV-Scanner), więc Trivy działa z `--pkg-types os` — każdy rodzaj komponentu ma jeden skaner.
 

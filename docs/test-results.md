@@ -98,9 +98,9 @@ Dodatkowo: `vuln/plaintext-secret` (jawny `Secret` w repo GitOps) zatrzymany prz
 
 **Wynik:** ✅ zaliczony.
 
-## Etap 13: testy bramek skanerów
+## Testy bramek skanerów
 
-**Kryteria (CLAUDE.md):** na każdym branchu `vuln/*` pipeline kończy się czerwono na zaplanowanym jobie, obraz **nie** jest publikowany w Docker Hub, brak dispatchu do GitOps, `main` zielony; bramka High/Critical (`exit 1`) dla Semgrep, OSV-Scanner, Checkov, Trivy, ZAP.
+**Kryteria:** na każdym branchu `vuln/*` pipeline kończy się czerwono na zaplanowanym jobie, obraz **nie** jest publikowany w Docker Hub, brak dispatchu do GitOps, `main` zielony; bramka High/Critical (`exit 1`) dla Semgrep, OSV-Scanner, Checkov, Trivy, ZAP.
 
 **Bramki:** każdy skaner wysyła SARIF do GitHub Security (`if: always()`), a krok *Security gate* (`scripts/sarif-gate.py`) kończy job `exit 1` przy znalezisku High/Critical (`level: error` lub `security-severity ≥ 7.0`). Uzupełnienia: polityki reguł ZAP (`.zap/rules.tsv`) i Hadolinta (`.hadolint.yaml`) — złe praktyki, które narzędzia domyślnie oceniają niżej, podniesione do poziomu blokującego; Gitleaks — każdy wyciek = Critical; Trivy — CVE z dostępną poprawką. Żaden skaner nie ma `continue-on-error` ani `exit-code: 0` bez bramki po nim.
 
@@ -121,9 +121,9 @@ Metoda: commity branchy spoza `main` (`git rev-list origin/vuln/<x> --not origin
 
 Repo GitOps: `vuln/plaintext-secret` — `Secrets (Gitleaks)` ❌; Argo CD śledzi tylko `main`, sekret nie trafił do klastra.
 
-Testy T1 i T2 (wymagane w etapie 13) — zaliczone, opisane wyżej.
+Testy T1 i T2 — zaliczone, opisane wyżej.
 
-**Wynik:** ✅ etap 13 zaliczony.
+**Wynik:** ✅ zaliczony.
 
 ## T3 Integralność i weryfikacja podpisów Cosign
 

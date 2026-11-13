@@ -4,19 +4,19 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 
 `main` = wersja secure (poprawka opisana w kolumnie „Poprawka w `main`”).
 
-| ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Etap | Status |
-|---|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | 11f | ✅ zatrzymany przez Gitleaks |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | 11g | ✅ zatrzymany przez Hadolint |
-| VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | 11a | ✅ zatrzymany przez Semgrep |
-| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | 11b | ✅ zatrzymany przez OSV-Scanner |
-| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | 11h | ✅ zatrzymany przez Trivy |
-| VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | 11c | ✅ zatrzymany przez Checkov |
-| VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | 11c, 14 | ✅ zatrzymany przez Checkov (klaster: etap 14) |
-| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | 11e | ✅ zatrzymany przez OWASP ZAP |
-| VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | 14 | ✅ zatrzymany przez Kyverno |
-| VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | 12 | ✅ zatrzymany przez Gitleaks |
-| VULN-11 | `vuln/helm-hostpath` | app | A05:2021 Security Misconfiguration (CWE-250, CWE-552) | **Checkov** | 11c | ✅ zatrzymany przez Checkov |
+| ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Status |
+|---|---|---|---|---|---|
+| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | ✅ zatrzymany przez Gitleaks |
+| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | ✅ zatrzymany przez Hadolint |
+| VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | ✅ zatrzymany przez Semgrep |
+| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | ✅ zatrzymany przez OSV-Scanner |
+| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | ✅ zatrzymany przez Trivy |
+| VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | ✅ zatrzymany przez Checkov |
+| VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | ✅ zatrzymany przez Checkov |
+| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | ✅ zatrzymany przez OWASP ZAP |
+| VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | ✅ zatrzymany przez Kyverno |
+| VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | ✅ zatrzymany przez Gitleaks |
+| VULN-11 | `vuln/helm-hostpath` | app | A05:2021 Security Misconfiguration (CWE-250, CWE-552) | **Checkov** | ✅ zatrzymany przez Checkov |
 
 ---
 
@@ -63,9 +63,9 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 ## VULN-07: wykres Helm bez NetworkPolicy (IaC)
 
 - **Branch:** `vuln/helm-no-netpol`
-- **Bramka:** job `IaC (Checkov)` (CKV2_K8S_6); weryfikacja w klastrze — etap 14.
+- **Bramka:** job `IaC (Checkov)` (CKV2_K8S_6); dodatkowo weryfikacja w klastrze.
 - **Co psujemy:** `networkPolicy.enabled: false` — brak polityk default-deny; każdy pod w klastrze ma dostęp do bazy i aplikacji (z pominięciem Traefika), aplikacja ma nieograniczony ruch wychodzący (CWE-923).
-- **Poprawka w `main`:** `networkPolicy.enabled: true` — default-deny; aplikacja przyjmuje ruch tylko z Traefika, baza tylko z aplikacji, ruch wychodzący aplikacji tylko do bazy i DNS (zweryfikowane w k3d w etapie 6).
+- **Poprawka w `main`:** `networkPolicy.enabled: true` — default-deny; aplikacja przyjmuje ruch tylko z Traefika, baza tylko z aplikacji, ruch wychodzący aplikacji tylko do bazy i DNS (zweryfikowane w k3d).
 
 ---
 
@@ -88,7 +88,7 @@ Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branch
 - **Bramka:** job `Secrets (Gitleaks)`. Pozostałe joby zielone.
 - **Co psujemy:** `app/payments.py` — `PAYMENT_API_KEY = "<losowe 48 znaków hex>"` (CWE-798). Wartość wygenerowana `openssl rand -hex 24` — **sztuczna, nie działa w żadnej usłudze**; nie była wypisywana w logach ani w dokumentacji.
 - **Wykrywa:** Gitleaks `generic-api-key` (oznaczony jako Critical przez `scripts/sarif-set-severity.py`).
-- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret, od etapu 12 SealedSecret), lokalnie `.env` w `.gitignore`.
+- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret odtwarzany z SealedSecret), lokalnie `.env` w `.gitignore`.
 
 ---
 
