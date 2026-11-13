@@ -22,10 +22,10 @@ FROM python:latest AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH
-# Security update not yet in the base image: CVE-2026-109518 (apt < 3.0.4).
-# Remove once the pinned base image ships apt >= 3.0.4.
+# Security update not yet in the base image: CVE-2026-76844, CVE-2026-85091 (zlib).
+# Remove once the pinned base image ships zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
