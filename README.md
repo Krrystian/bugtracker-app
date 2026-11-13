@@ -3,8 +3,6 @@
 Prosty bugtracker (FastAPI + PostgreSQL) — aplikacja do projektu „Bezpieczny potok GitOps (DevSecOps)”.
 Gałąź `main` to wersja secure. Podatne warianty żyją wyłącznie na gałęziach `vuln/*`.
 
-**Nowa osoba w zespole?** Zacznij od [docs/zespol-start.md](docs/zespol-start.md) — uruchomienie w Docker Compose, testy i pełny klaster jedną komendą (`scripts/bootstrap-cluster.sh`).
-
 ## Obiekty Kubernetes (projekt)
 
 Pełny raport wdrożenia z poleceniami, wynikami i testami: **[docs/raport-kubernetes.md](docs/raport-kubernetes.md)**.
@@ -24,7 +22,7 @@ Pełny raport wdrożenia z poleceniami, wynikami i testami: **[docs/raport-kuber
 | LimitRange | `templates/limitrange.yaml` |
 | ServiceAccount | `templates/serviceaccount.yaml` |
 
-Manifesty statyczne (bez Helma, etap 3): `k8s/`. Argo CD `Application` i wartości środowiska: repo GitOps. Polityka Kyverno: `infra/kyverno/`.
+Manifesty statyczne (bez Helma): `k8s/`. Argo CD `Application` i wartości środowiska: repo GitOps. Polityka Kyverno: `infra/kyverno/`.
 
 ## Uruchomienie w Dockerze (zalecane)
 
@@ -41,7 +39,7 @@ docker compose down -v         # stop + usunięcie danych
 
 Obraz: multi-stage, przypięty `python:3.12.15-slim-trixie` (digest), użytkownik bez roota (UID 10001), system plików tylko do odczytu, `cap_drop: ALL`. Baza nie wystawia portu na zewnątrz.
 
-## Kubernetes w Docker Desktop (manifesty statyczne, etap 3)    
+## Kubernetes w Docker Desktop (manifesty statyczne)
 
 Wymaga włączonego Kubernetes w Docker Desktop (kontekst `docker-desktop`) i kontrolera Ingress Traefik.
 
@@ -67,7 +65,7 @@ open http://localhost
 
 Manifesty: namespace z Pod Security `restricted`, PostgreSQL (UID 70) z PVC, aplikacja w 2 replikach (UID 10001), oba kontenery z read-only FS, `drop: ALL`, limitami i sondami zdrowia.
 
-## Klaster k3d + wykres Helm (etapy 5–6)
+## Klaster k3d + wykres Helm
 
 k3d uruchamia lekki Kubernetes (k3s) w kontenerach Dockera; Traefik jest wbudowany. Aplikację wdraża wykres Helm `charts/bugtracker`, obraz pobierany jest z Docker Hub (tag = pełny SHA commita z `main`).
 
@@ -98,9 +96,9 @@ Najważniejsze wartości (`charts/bugtracker/values.yaml`):
 | `database.enabled` | `true` | PostgreSQL w klastrze (PVC zachowywany po `helm uninstall`) |
 | `networkPolicy.enabled` | `true` | default-deny; aplikacja tylko z Traefika, baza tylko z aplikacji, brak wyjścia do internetu |
 
-Statyczne manifesty z etapu 3 zostają w `k8s/` (Docker Desktop, obraz lokalny).
+Statyczne manifesty zostają w `k8s/` (Docker Desktop, obraz lokalny).
 
-## Cloudflare Tunnel dla webhooka (etap 7)
+## Cloudflare Tunnel dla webhooka
 
 Wariant **Quick Tunnel**: bez konta i domeny, publiczny adres `https://<losowe-słowa>.trycloudflare.com`, który **zmienia się po każdym restarcie** poda `cloudflared`.
 
@@ -122,7 +120,7 @@ curl "$(scripts/tunnel-url.sh)/"                     # 404 (UI Argo CD niedostę
 
 Przejście na własną domenę: `cloudflared tunnel run` z tokenem z Cloudflare Zero Trust (Secret / SealedSecret), stały adres webhooka; trasa `argo-webhook.tunnel` w klastrze zostaje bez zmian.
 
-## Argo CD (etap 8)
+## Argo CD
 
 Argo CD wdraża aplikację z repozytorium GitOps [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops) (gałąź `main`): wykres `charts/bugtracker` z tego repo + `environments/development/values.yaml` z repo GitOps (Multiple Sources).
 
@@ -141,7 +139,7 @@ kubectl -n argocd port-forward svc/argocd-server 8080:80   # http://localhost:80
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-## Webhook GitHub → Argo CD (etap 9)
+## Webhook GitHub → Argo CD
 
 Webhook repozytorium `bugtracker-gitops` (zdarzenie `push`) wskazuje na `https://<tunel>/api/webhook`. Argo CD weryfikuje podpis `X-Hub-Signature-256` sekretem `webhook.github.secret` (w `argocd-secret`, poza repo); żądania bez podpisu lub ze złym podpisem są odrzucane (HTTP 400).
 
@@ -153,7 +151,7 @@ scripts/update-webhook-url.sh     # ustawia nowy adres w GitHub, sekret z klastr
 
 Dostawy: repo GitOps → Settings → Webhooks → Recent Deliveries (lub `gh api repos/Krrystian/bugtracker-gitops/hooks/<id>/deliveries`).
 
-## Skanery bezpieczeństwa i SBOM (etap 11)
+## Skanery bezpieczeństwa i SBOM
 
 Każdy push/PR uruchamia niezależne joby skanerów; raporty SARIF trafiają do **Security → Code scanning**, a `scripts/sarif-gate.py` przerywa job przy znaleziskach High/Critical. Publikacja obrazu wymaga zielonych wszystkich jobów. Szczegóły i wyniki: `docs/scan-results.md`, podatności demonstracyjne: `docs/vulnerabilities.md`.
 
@@ -168,7 +166,7 @@ Każdy push/PR uruchamia niezależne joby skanerów; raporty SARIF trafiają do 
 | Secrets (Gitleaks) | Gitleaks | sekrety w całej historii git (każdy wyciek = Critical) |
 | DAST (OWASP ZAP) | ZAP baseline + polityka `.zap/rules.tsv` | działająca aplikacja w tymczasowym k3d (`scripts/dast-zap.sh`, można uruchomić lokalnie) — raport HTML w artefakcie `zap-report` |
 
-## Przepływ aplikacja → GitOps (etap 10)
+## Przepływ aplikacja → GitOps
 
 ```
 push/merge na main ─► CI: Unit tests → Build image → Push to Docker Hub → Notify GitOps repo
@@ -181,9 +179,9 @@ push/merge na main ─► CI: Unit tests → Build image → Push to Docker Hub 
 
 Job `Notify GitOps repo` działa tylko na `main` i tylko po zielonych testach, buildzie i publikacji. Używa sekretu `GITOPS_DISPATCH_TOKEN` (fine-grained PAT: tylko repo `bugtracker-gitops`, Contents read/write).
 
-## Sekrety w klastrze (etap 12)
+## Sekrety w klastrze
 
-Od etapu 12 sekret aplikacji `bugtracker-secrets` jest zarządzany przez **Sealed Secrets**: zaszyfrowany plik `SealedSecret` leży w repozytorium GitOps (`environments/development/secrets/`), Argo CD go wdraża, a kontroler w klastrze (v0.40.0, `kube-system`) odszyfrowuje go do zwykłego `Secret`. Instalacja kontrolera:
+Sekret aplikacji `bugtracker-secrets` jest zarządzany przez **Sealed Secrets**: zaszyfrowany plik `SealedSecret` leży w repozytorium GitOps (`environments/development/secrets/`), Argo CD go wdraża, a kontroler w klastrze (v0.40.0, `kube-system`) odszyfrowuje go do zwykłego `Secret`. Instalacja kontrolera:
 
 ```bash
 curl -fsSLo controller.yaml https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.40.0/controller.yaml
@@ -191,9 +189,9 @@ echo "ac8aabccdd9110430d117501705818115b2ab0993700a9c118d4d42cf4015a17  controll
 kubectl apply -f controller.yaml
 ```
 
-Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium GitOps. Ręczne `kubectl create secret` z etapów 3–5 zostało zastąpione (sekret przejęty przez kontroler bez usuwania).
+Tworzenie sekretów i kopia klucza prywatnego kontrolera: README repozytorium GitOps. Sekret tworzony wcześniej ręcznie (`kubectl create secret`) został przejęty przez kontroler bez usuwania.
 
-## Podpisy obrazów i admission control (etap 14)
+## Podpisy obrazów i admission control
 
 - **Cosign (CI):** job `Push to Docker Hub` podpisuje obraz **po digeście** kluczem z sekretów `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD`, dołącza SBOM (CycloneDX) jako podpisane poświadczenie (*attestation*) i weryfikuje oba kluczem publicznym `cosign.pub` (w repozytorium).
 - **Kyverno (klaster):** `infra/kyverno/verify-images.yaml` — `ImageValidatingPolicy`: w namespace'ach `bugtracker` i `sandbox` pod może uruchomić wyłącznie obraz z podpisem **i** podpisaną atestacją SBOM (CycloneDX) kluczem projektu (wyjątek: PostgreSQL przypięty digestem); tag zamieniany na zweryfikowany digest. Starszy typ `ClusterPolicy` (`verifyImages`) nie odczytuje podpisów w formacie cosign v3.
