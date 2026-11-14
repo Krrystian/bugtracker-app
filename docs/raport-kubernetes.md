@@ -64,7 +64,7 @@ Aplikacja jest wdrażana jako wykres Helm `charts/bugtracker`. Argo CD `Applicat
 | **ResourceQuota** | `bugtracker-quota` | `charts/bugtracker/templates/resourcequota.yaml` (wartości: `values.yaml` → `resourceQuota`) | `kubectl -n bugtracker describe quota` |
 | **LimitRange** | `bugtracker-limits` | `charts/bugtracker/templates/limitrange.yaml` (wartości: `values.yaml` → `limitRange`) | `kubectl -n bugtracker describe limitrange` |
 
-Statyczne manifesty z wcześniejszego etapu (Docker Desktop, bez Helma) leżą w katalogu `k8s/`: `namespace.yaml`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `networkpolicy.yaml`.
+Statyczne manifesty (Docker Desktop, bez Helma) leżą w katalogu `k8s/`: `namespace.yaml`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `networkpolicy.yaml`.
 
 ### Obiekty i mechanizmy dodatkowe
 
@@ -175,7 +175,7 @@ ingress.networking.k8s.io/bugtracker   traefik   localhost   172.18.0.2   80    
 
 Uwagi do wyniku:
 - ReplicaSety z `DESIRED 0` to historia Deploymentu (rollback). Kubernetes przechowuje je domyślnie (`revisionHistoryLimit: 10`).
-- `secret/sh.helm.release.v1.bugtracker.v1` został po próbnej instalacji `helm install` z etapu 6. Argo CD nie używa Helma do instalacji (renderuje szablony), więc ten obiekt nie jest już używany.
+- `secret/sh.helm.release.v1.bugtracker.v1` został po próbnej instalacji `helm install`. Argo CD nie używa Helma do instalacji (renderuje szablony), więc ten obiekt nie jest już używany.
 
 ### 3.3. Deployment (aplikacja) i StatefulSet (baza)
 
@@ -714,7 +714,7 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 | VULN-10 | `vuln/plaintext-secret` | gitops | jawny `Secret` zamiast `SealedSecret` | Secrets (Gitleaks) repo GitOps | ❌ tylko zaplanowana bramka, [42366699182](https://github.com/Krrystian/bugtracker-gitops/actions/runs/42366699182) |
 | VULN-11 | `vuln/helm-hostpath` | app | `hostPath` `/var/run/docker.sock` w podzie aplikacji | IaC (Checkov) | ❌ tylko zaplanowana bramka, [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999) |
 
-Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0): w każdym czerwony jest wyłącznie job zaplanowanej bramki, a joby publikacji (`Push to Docker Hub`, `Notify GitOps repo`) są pominięte. Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md) (etap 13).
+Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0): w każdym czerwony jest wyłącznie job zaplanowanej bramki, a joby publikacji (`Push to Docker Hub`, `Notify GitOps repo`) są pominięte. Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md).
 
 ![Zrzut: przebiegi gałęzi vuln](img/25-vuln-runs.png)
 
