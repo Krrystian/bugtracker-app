@@ -95,19 +95,11 @@ NAME                      STATUS   ROLES           AGE   VERSION        INTERNAL
 k3d-bugtracker-server-0   Ready    control-plane   16d   v1.36.4+k3s1   172.18.0.2    <none>        K3s v1.36.4+k3s1   7.0.14-linuxkit (arm64)   containerd://2.3.4-k3s1.36
 ```
 
-![Zrzut: klaster k3d i węzeł](img/01-klaster.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl config current-context`, `k3d cluster list` i `kubectl get nodes -o wide`.
-
 ```console
 $ kubectl get ns bugtracker --show-labels
 NAME         STATUS   AGE   LABELS
 bugtracker   Active   16d   kubernetes.io/metadata.name=bugtracker,pod-security.kubernetes.io/enforce=restricted
 ```
-
-![Zrzut: namespace z etykietą Pod Security](img/02-namespace.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl get ns bugtracker --show-labels`, z widoczną etykietą `pod-security.kubernetes.io/enforce=restricted`.
 
 ### 3.2. Wszystkie obiekty w namespace `bugtracker`
 
@@ -169,10 +161,6 @@ NAME                                   CLASS     HOSTS       ADDRESS      PORTS 
 ingress.networking.k8s.io/bugtracker   traefik   localhost   172.18.0.2   80      16d
 ```
 
-![Zrzut: wszystkie obiekty w namespace bugtracker](img/03-obiekty.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get all,pvc,cm,secret,quota,limitrange,networkpolicy,ingress`. Wynik jest długi, więc można zrobić dwa zrzuty.
-
 Uwagi do wyniku:
 - ReplicaSety z `DESIRED 0` to historia Deploymentu (rollback). Kubernetes przechowuje je domyślnie (`revisionHistoryLimit: 10`).
 - `secret/sh.helm.release.v1.bugtracker.v1` został po próbnej instalacji `helm install`. Argo CD nie używa Helma do instalacji (renderuje szablony), więc ten obiekt nie jest już używany.
@@ -196,10 +184,6 @@ $ kubectl -n bugtracker get sts bugtracker-postgres -o jsonpath='serviceName={.s
 serviceName=bugtracker-postgres-headless retention={"whenDeleted":"Retain","whenScaled":"Retain"}
 data-bugtracker-postgres-0
 ```
-
-![Zrzut: Deployment i StatefulSet](img/04-deployment-statefulset.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get deploy bugtracker -o wide` i `kubectl -n bugtracker get sts bugtracker-postgres -o wide`, z widocznym tagiem obrazu (SHA commitu) i digestem postgresa.
 
 Obraz aplikacji ma tag równy pełnemu SHA commitu, nie `latest`. Kyverno przy tworzeniu poda dopisał zweryfikowany digest:
 
@@ -243,11 +227,7 @@ X-Frame-Options: DENY
 
 ![Zrzut: Service, Ingress i odpowiedź /health](img/05-service-ingress.png)
 
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get svc -o wide` i `curl -i http://localhost/health`. Dodatkowo przeglądarka z otwartym `http://localhost` (strona logowania bugtrackera).
-
 ![Zrzut: aplikacja w przeglądarce](img/06-aplikacja-przegladarka.png)
-
-> Zrzut do wykonania: przeglądarka, `http://localhost`, lista zgłoszeń po zalogowaniu.
 
 ### 3.5. PVC i trwałość danych
 
@@ -258,10 +238,6 @@ data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6  
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
 pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            Delete           Bound    bugtracker/data-bugtracker-postgres-0   local-path     <unset>                          28m
 ```
-
-![Zrzut: PVC i PV](img/07-pvc.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get pvc -o wide` i `kubectl get pv`.
 
 Przejście bazy z Deploymentu na StatefulSet (2026-11-07) zrobiłem tak:
 1. kopia bazy (`pg_dump -Fc`, poza repozytorium),
@@ -338,10 +314,6 @@ BinaryData
 Events:  <none>
 ```
 
-![Zrzut: ConfigMap](img/08-configmap.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker describe configmap bugtracker-config`.
-
 ### 3.7. Secret (z SealedSecret)
 
 Wartości sekretów nie są wypisywane. `describe` pokazuje tylko nazwy kluczy i rozmiary.
@@ -363,10 +335,6 @@ Data
 db-password:  32 bytes
 secret-key:   64 bytes
 ```
-
-![Zrzut: SealedSecret i Secret](img/09-secret.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get sealedsecret` i `kubectl -n bugtracker describe secret bugtracker-secrets`. **Nie** rób zrzutu `kubectl get secret -o yaml`, bo pokazuje wartości zakodowane base64.
 
 ### 3.8. NetworkPolicy
 
@@ -396,10 +364,6 @@ Spec:
     <none> (Selected pods are isolated for egress connectivity)
   Policy Types: Ingress, Egress
 ```
-
-![Zrzut: NetworkPolicy](img/10-networkpolicy.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get networkpolicy` i `kubectl -n bugtracker describe networkpolicy bugtracker-postgres`.
 
 ### 3.9. Requests i Limits, ResourceQuota, LimitRange
 
@@ -440,10 +404,6 @@ Container              memory    32Mi   1Gi  64Mi             256Mi          -
 PersistentVolumeClaim  storage   100Mi  2Gi  -                -              -
 ```
 
-![Zrzut: requests/limits, ResourceQuota i LimitRange](img/11-zasoby.png)
-
-> Zrzut do wykonania: terminal z wynikami trzech poleceń z tej sekcji.
-
 ResourceQuota jest dobrana do 2 podów aplikacji, 1 dodatkowego poda podczas rolling update i bazy, z zapasem. Zabrania usług `LoadBalancer` i `NodePort`, więc aplikacji nie da się wystawić z pominięciem Ingress.
 
 ### 3.10. Argo CD i Kyverno
@@ -457,7 +417,7 @@ bugtracker-sandbox   OutOfSync     Degraded
 
 ![Zrzut: Argo CD UI](img/12-argocd.png)
 
-> Zrzut do wykonania: (1) terminal z wynikiem `kubectl -n argocd get applications`; (2) interfejs Argo CD (`kubectl -n argocd port-forward svc/argocd-server 8080:443`, potem `https://localhost:8080`) z drzewem zasobów aplikacji `bugtracker`.
+![Zrzut: Argo CD, lista aplikacji](img/12b-argocd-aplikacje.png)
 
 Aplikacja `bugtracker` jest `Synced` i `Healthy`: stan klastra zgadza się z repozytoriami. Aplikacja `bugtracker-sandbox` (piaskownica, ręczna synchronizacja) jest `Degraded` celowo: Kyverno nie wpuszcza tam niepodpisanego obrazu (test T3).
 
@@ -476,10 +436,6 @@ Error from server (Forbidden): pods "test-limitrange" is forbidden: maximum cpu 
 
 **Wynik:** ✅ odrzucony przez LimitRange.
 
-![Zrzut: odrzucenie przez LimitRange](img/13-test-limitrange.png)
-
-> Zrzut do wykonania: terminal z poleceniem i komunikatem `maximum cpu usage per Container is 1, but limit is 2`. Pełna treść `--overrides` (pod zgodny z PSA `restricted`, `resources.limits.cpu: "2"`) jest opisana niżej.
-
 ### 4.2. LimitRange: wartości domyślne
 
 Cel: kontener **bez** `resources` dostaje domyślne requests/limits z LimitRange.
@@ -490,10 +446,6 @@ $ kubectl -n bugtracker run test-defaults --image=postgres:16.15-alpine@sha256:7
 ```
 
 **Wynik:** ✅ serwer dopisał `requests 50m/64Mi` i `limits 250m/256Mi`.
-
-![Zrzut: domyślne zasoby z LimitRange](img/14-test-limitrange-default.png)
-
-> Zrzut do wykonania: terminal z poleceniem i wynikiem JSON z dopisanymi zasobami.
 
 ### 4.3. ResourceQuota: przekroczenie limitu namespace'u
 
@@ -513,10 +465,6 @@ error: failed to create LoadBalancer service: services "test-lb" is forbidden: e
 
 **Wynik:** ✅ usługa `LoadBalancer` odrzucona (`services.loadbalancers: 0`).
 
-![Zrzut: odrzucenie przez ResourceQuota](img/15-test-quota.png)
-
-> Zrzut do wykonania: terminal z oboma komunikatami `exceeded quota: bugtracker-quota`.
-
 ### 4.4. Pod Security Admission `restricted`
 
 Cel: zwykły pod (root, bez `securityContext`) ma zostać odrzucony w namespace `bugtracker`.
@@ -527,10 +475,6 @@ Error from server (Forbidden): pods "test-root" is forbidden: violates PodSecuri
 ```
 
 **Wynik:** ✅ odrzucony przez PSA `restricted`.
-
-![Zrzut: odrzucenie przez Pod Security](img/16-test-psa.png)
-
-> Zrzut do wykonania: terminal z komunikatem `violates PodSecurity "restricted:latest"`.
 
 ### 4.5. NetworkPolicy: dozwolony i zablokowany ruch
 
@@ -552,10 +496,6 @@ postgres -> internet ZABLOKOWANE (exit 1)
 
 **Wynik:** ✅ aplikacja → baza działa, aplikacja → internet i baza → internet są zablokowane. W k3s polityki egzekwuje kube-router: odrzucone połączenie kończy się `Connection refused` zamiast czekania do timeoutu.
 
-![Zrzut: test NetworkPolicy](img/17-test-networkpolicy.png)
-
-> Zrzut do wykonania: terminal z wynikami obu poleceń (`app -> postgres:5432 OK` oraz `ConnectionRefusedError` / `ZABLOKOWANE`).
-
 ### 4.6. StatefulSet: stabilna nazwa DNS przez headless Service
 
 ```console
@@ -566,10 +506,6 @@ $ kubectl -n bugtracker get pod bugtracker-postgres-0 -o jsonpath='{.status.podI
 ```
 
 **Wynik:** ✅ nazwa `bugtracker-postgres-0.bugtracker-postgres-headless` wskazuje IP poda bazy.
-
-![Zrzut: DNS headless Service](img/18-test-headless.png)
-
-> Zrzut do wykonania: terminal z oboma poleceniami i tym samym adresem IP.
 
 ### 4.7. ServiceAccount bez uprawnień
 
@@ -583,10 +519,6 @@ automountServiceAccountToken=false
 ```
 
 **Wynik:** ✅ brak uprawnień, token niemontowany.
-
-![Zrzut: kubectl auth can-i](img/19-test-serviceaccount.png)
-
-> Zrzut do wykonania: terminal z wynikami `kubectl auth can-i` (`no`, `no`) i `automountServiceAccountToken=false`.
 
 Pliki `--overrides` użyte w testach 4.1–4.3 (pod zgodny z PSA `restricted`, różniący się tylko polem `resources`):
 
@@ -626,7 +558,7 @@ Testy zaplanowane w zadaniu cząstkowym nr 2 (dokumentacja techniczna projektu).
 
 ![Zrzut: T1 przebieg CI](img/20-t1-ci.png)
 
-> Zrzut do wykonania: GitHub → Actions → przebieg 40075903495 (graf jobów z czerwonym `SCA (OSV-Scanner)`) oraz Security → Code scanning, filtr `branch:vuln/sca-deps tool:osv-scanner`, alert CVE-2018-20060.
+![Zrzut: alert CVE-2018-20060 w Code scanning](img/20b-t1-alert.png)
 
 ### T2: Centralizacja raportów (SARIF)
 
@@ -640,7 +572,7 @@ Testy zaplanowane w zadaniu cząstkowym nr 2 (dokumentacja techniczna projektu).
 
 ![Zrzut: T2 GitHub Security](img/21-t2-security.png)
 
-> Zrzut do wykonania: GitHub → Security → Code scanning z listą narzędzi (filtr „Tool”) oraz alert Checkov CKV_K8S_23 na gałęzi `vuln/helm-privileged`.
+![Zrzut: alert Checkov CKV_K8S_23](img/21b-t2-checkov.png)
 
 ### T3: Integralność i weryfikacja podpisów Cosign
 
@@ -664,8 +596,6 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 
 ![Zrzut: T3 odmowa Kyverno](img/22-t3-kyverno.png)
 
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n sandbox get events --field-selector reason=FailedCreate` oraz Argo CD UI z aplikacją `bugtracker-sandbox` (komunikat błędu przy ReplicaSet).
-
 ### T4: Brama wdrożeniowa
 
 - **Cel:** po zielonym CI nowy tag obrazu trafia do repo GitOps tylko na gałąź `development`. Działająca aplikacja nie zmienia się do ręcznego scalenia `development` → `main`.
@@ -679,7 +609,7 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 
 ![Zrzut: T4 gałęzie GitOps](img/23-t4-gitops.png)
 
-> Zrzut do wykonania: GitHub → bugtracker-gitops → porównanie `main...development` (różnica w `image.tag`) oraz lista commitów `development` z commitem `github-actions[bot]`.
+![Zrzut: commity github-actions[bot] na gałęzi development](img/23b-t4-commity.png)
 
 ### T5: Szczelność sekretów
 
@@ -693,8 +623,6 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 - **Uzyskany wynik:** [bugtracker-gitops#6](https://github.com/Krrystian/bugtracker-gitops/pull/6): Gitleaks przepuścił szyfrogram, Argo CD wdrożył `SealedSecret`, kontroler utworzył `Secret` (właściciel: `SealedSecret`). SHA-256 wartości w klastrze jest zgodny z oryginałem. 0 wystąpień wartości (jawnie i w base64) w historii obu repozytoriów (wszystkie gałęzie), w logach Argo CD, kontrolera Sealed Secrets i CI. Dodatkowo `vuln/plaintext-secret` (jawny `Secret`) zatrzymany przez Gitleaks ([40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420)). ✅
 
 ![Zrzut: T5 SealedSecret](img/24-t5-sealedsecret.png)
-
-> Zrzut do wykonania: plik `bugtracker-t5-demo.sealedsecret.yaml` w GitHubie (widoczny tylko szyfrogram) oraz terminal z `kubectl -n bugtracker get sealedsecret,secret`.
 
 ## 6. Gałęzie z podatnościami `vuln/*`
 
@@ -717,8 +645,6 @@ Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the p
 Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0): w każdym czerwony jest wyłącznie job zaplanowanej bramki, a joby publikacji (`Push to Docker Hub`, `Notify GitOps repo`) są pominięte. Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md).
 
 ![Zrzut: przebiegi gałęzi vuln](img/25-vuln-runs.png)
-
-> Zrzut do wykonania: GitHub → Actions, lista przebiegów z filtrem gałęzi `vuln/*` (każdy z jednym czerwonym jobem) oraz jeden przebieg zielony na `main`.
 
 ## 7. Komentarz o funkcjonalności
 
