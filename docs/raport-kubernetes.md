@@ -15,7 +15,7 @@ Wyniki poleceń w tym raporcie to prawdziwe wyniki z klastra `k3d-bugtracker`, z
 4. [Testy obiektów Kubernetes](#4-testy-obiektów-kubernetes)
 5. [Testy akceptacyjne T1–T5](#5-testy-akceptacyjne-t1t5)
 6. [Gałęzie z podatnościami `vuln/*`](#6-gałęzie-z-podatnościami-vuln)
-7. [Komentarz o funkcjonalności](#7-komentarz-o-funkcjonalności)
+7. [Podsumowanie](#7-podsumowanie)
 
 ## 1. System i architektura
 
@@ -50,37 +50,35 @@ Aplikacja jest wdrażana jako wykres Helm `charts/bugtracker`. Argo CD `Applicat
 
 Ścieżki względem repozytorium `bugtracker-app`, chyba że zaznaczono inaczej. Wszystkie obiekty działają w namespace `bugtracker`.
 
-| Obiekt | Nazwa w klastrze | Plik | Polecenie weryfikujące |
-|---|---|---|---|
-| **Deployment** | `bugtracker` (aplikacja, 2 repliki) | `charts/bugtracker/templates/deployment.yaml` | `kubectl -n bugtracker get deploy -o wide` |
-| **StatefulSet** | `bugtracker-postgres` (baza, 1 replika) | `charts/bugtracker/templates/postgres-statefulset.yaml` | `kubectl -n bugtracker get sts -o wide` |
-| **Service** | `bugtracker`, `bugtracker-postgres` (ClusterIP), `bugtracker-postgres-headless` (headless dla StatefulSet) | `charts/bugtracker/templates/service.yaml`, `postgres-service.yaml` | `kubectl -n bugtracker get svc -o wide` |
-| **NetworkPolicy** | `bugtracker-default-deny`, `bugtracker-app`, `bugtracker-postgres` | `charts/bugtracker/templates/networkpolicy.yaml` | `kubectl -n bugtracker describe networkpolicy` |
-| **Ingress** | `bugtracker` (Traefik, host `localhost`) | `charts/bugtracker/templates/ingress.yaml` | `kubectl -n bugtracker get ingress`, `curl http://localhost/health` |
-| **PVC** | `data-bugtracker-postgres-0` (z `volumeClaimTemplates`) | `charts/bugtracker/templates/postgres-statefulset.yaml` | `kubectl -n bugtracker get pvc` |
-| **ConfigMap** | `bugtracker-config` (jawna konfiguracja) | `charts/bugtracker/templates/configmap.yaml` | `kubectl -n bugtracker describe cm bugtracker-config` |
-| **Secret** | `bugtracker-secrets` (hasło bazy, klucz sesji), tworzony z `SealedSecret` | `bugtracker-gitops`: `environments/development/secrets/bugtracker-secrets.sealedsecret.yaml` | `kubectl -n bugtracker get sealedsecret,secret` |
-| **Requests i Limits** | każdy kontener | `charts/bugtracker/values.yaml` (`app.resources`, `database.resources`) | `kubectl -n bugtracker get pods -o custom-columns=...` |
-| **ResourceQuota** | `bugtracker-quota` | `charts/bugtracker/templates/resourcequota.yaml` (wartości: `values.yaml` → `resourceQuota`) | `kubectl -n bugtracker describe quota` |
-| **LimitRange** | `bugtracker-limits` | `charts/bugtracker/templates/limitrange.yaml` (wartości: `values.yaml` → `limitRange`) | `kubectl -n bugtracker describe limitrange` |
+| Obiekt | Nazwa w klastrze | Plik |
+|---|---|---|
+| Deployment | `bugtracker` (aplikacja, 2 repliki) | `templates/deployment.yaml` |
+| StatefulSet | `bugtracker-postgres` (baza) | `templates/postgres-statefulset.yaml` |
+| Service | `bugtracker`, `bugtracker-postgres`, `bugtracker-postgres-headless` | `templates/service.yaml`, `templates/postgres-service.yaml` |
+| NetworkPolicy | `bugtracker-default-deny`, `bugtracker-app`, `bugtracker-postgres` | `templates/networkpolicy.yaml` |
+| Ingress | `bugtracker` (host `localhost`) | `templates/ingress.yaml` |
+| PVC | `data-bugtracker-postgres-0` | `templates/postgres-statefulset.yaml` |
+| ConfigMap | `bugtracker-config` | `templates/configmap.yaml` |
+| Secret | `bugtracker-secrets` (tworzony z `SealedSecret`) | repo GitOps: `environments/development/secrets/` |
+| Requests i Limits | każdy kontener | `values.yaml` |
+| ResourceQuota | `bugtracker-quota` | `templates/resourcequota.yaml` |
+| LimitRange | `bugtracker-limits` | `templates/limitrange.yaml` |
 
-Statyczne manifesty (Docker Desktop, bez Helma) leżą w katalogu `k8s/`: `namespace.yaml`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `networkpolicy.yaml`.
+Pliki `templates/` i `values.yaml` są w katalogu wykresu `charts/bugtracker/`. Statyczne manifesty (Docker Desktop, bez Helma) leżą w katalogu `k8s/`: `namespace.yaml`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `networkpolicy.yaml`.
 
 ### Obiekty i mechanizmy dodatkowe
 
-| Obiekt / mechanizm | Plik | Uzasadnienie |
-|---|---|---|
-| **ServiceAccount** `bugtracker` z `automountServiceAccountToken: false` | `charts/bugtracker/templates/serviceaccount.yaml`, `deployment.yaml` | Pody nie dostają tokenu API Kubernetesa. Przejęta aplikacja nie może odpytywać API klastra. |
-| **Namespace** z Pod Security Admission `restricted` | `bugtracker-gitops`: `argocd/application.yaml` (`managedNamespaceMetadata`), `k8s/namespace.yaml` | API serwera odrzuca pody z rootem, `privileged`, eskalacją uprawnień lub bez `seccompProfile`. |
-| **SealedSecret** (CRD Bitnami) | `bugtracker-gitops`: `environments/development/secrets/*.sealedsecret.yaml` | Sekrety mogą leżeć w publicznym repozytorium, bo są zaszyfrowane kluczem publicznym kontrolera. Odszyfrować je może tylko klaster. |
-| **Argo CD `Application`** (Multiple Sources) | `bugtracker-gitops`: `argocd/application.yaml`, `argocd/application-sandbox.yaml` | Stan klastra wynika z Gita (GitOps). `prune` i `selfHeal` cofają ręczne zmiany. Osobna piaskownica (`sandbox`) służy do testów podatnych wariantów. |
-| **Kyverno `ImageValidatingPolicy`** `verify-bugtracker-images` | `infra/kyverno/verify-images.yaml` | Pod uruchomi tylko obraz z podpisem Cosign i podpisanym SBOM. Tag jest zamieniany na digest. To odpowiednik `ClusterPolicy`/`verifyImages`, ale `ClusterPolicy` nie odczytuje podpisów w formacie cosign v3. |
-| **securityContext** (non-root, `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`) | `values.yaml`, szablony | Ogranicza skutki przejęcia kontenera. Wymagane przez PSA `restricted`. |
-| **Sondy** `startupProbe`, `readinessProbe`, `livenessProbe` | `deployment.yaml`, `postgres-statefulset.yaml` | Ruch trafia tylko do gotowych podów (readiness, `/health` sprawdza też bazę). Zawieszony kontener jest restartowany. |
-| **Sekrety montowane jako pliki** (`/run/secrets/bugtracker`, tryb 0440) | `deployment.yaml` | Sekrety nie trafiają do zmiennych środowiskowych, które łatwo wyciekają (logi, `/proc`, zrzuty). |
-| **`persistentVolumeClaimRetentionPolicy: Retain`** | `postgres-statefulset.yaml` | Usunięcie lub przeskalowanie StatefulSet nie kasuje danych bazy. |
-| **Headless Service** | `postgres-service.yaml` | Stała nazwa DNS poda bazy (`bugtracker-postgres-0.bugtracker-postgres-headless`), wymagana przez StatefulSet. |
-| **`checksum/config`** (adnotacja podu) | `deployment.yaml`, `postgres-statefulset.yaml` | Zmiana ConfigMap automatycznie restartuje pody, bo zmienne środowiskowe są czytane tylko przy starcie. |
+- **ServiceAccount bez tokenu:** pody nie dostają tokenu do API Kubernetes, więc przejęta aplikacja nie może sterować klastrem.
+- **Pod Security `restricted` na namespace:** klaster odrzuca pody działające jako root, `privileged` albo z podnoszeniem uprawnień.
+- **SealedSecret:** hasła są w repo zaszyfrowane i odszyfrować je może tylko klaster.
+- **Argo CD `Application`:** stan klastra wynika z Gita, a ręczne zmiany są cofane. Osobna aplikacja `sandbox` służy do testowania podatnych wersji.
+- **Polityka Kyverno** (`infra/kyverno/verify-images.yaml`): pod uruchomi tylko obraz podpisany naszym kluczem Cosign.
+- **securityContext:** kontenery działają bez roota, z systemem plików tylko do odczytu i bez dodatkowych uprawnień.
+- **Sondy (startup, readiness, liveness):** ruch trafia tylko do gotowych podów, a zawieszone kontenery są restartowane.
+- **Sekrety jako pliki** (`/run/secrets/bugtracker`), a nie zmienne środowiskowe, które łatwiej wyciekają.
+- **`Retain` dla wolumenu bazy:** usunięcie StatefulSet nie kasuje danych.
+- **Headless Service:** daje podowi bazy stałą nazwę DNS.
+- **`checksum/config`:** zmiana ConfigMap automatycznie restartuje pody.
 
 ## 3. Potwierdzenie wdrożenia
 
@@ -95,19 +93,11 @@ NAME                      STATUS   ROLES           AGE   VERSION        INTERNAL
 k3d-bugtracker-server-0   Ready    control-plane   16d   v1.36.4+k3s1   172.18.0.2    <none>        K3s v1.36.4+k3s1   7.0.14-linuxkit (arm64)   containerd://2.3.4-k3s1.36
 ```
 
-![Zrzut: klaster k3d i węzeł](img/01-klaster.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl config current-context`, `k3d cluster list` i `kubectl get nodes -o wide`.
-
 ```console
 $ kubectl get ns bugtracker --show-labels
 NAME         STATUS   AGE   LABELS
 bugtracker   Active   16d   kubernetes.io/metadata.name=bugtracker,pod-security.kubernetes.io/enforce=restricted
 ```
-
-![Zrzut: namespace z etykietą Pod Security](img/02-namespace.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl get ns bugtracker --show-labels`, z widoczną etykietą `pod-security.kubernetes.io/enforce=restricted`.
 
 ### 3.2. Wszystkie obiekty w namespace `bugtracker`
 
@@ -169,10 +159,6 @@ NAME                                   CLASS     HOSTS       ADDRESS      PORTS 
 ingress.networking.k8s.io/bugtracker   traefik   localhost   172.18.0.2   80      16d
 ```
 
-![Zrzut: wszystkie obiekty w namespace bugtracker](img/03-obiekty.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get all,pvc,cm,secret,quota,limitrange,networkpolicy,ingress`. Wynik jest długi, więc można zrobić dwa zrzuty.
-
 Uwagi do wyniku:
 - ReplicaSety z `DESIRED 0` to historia Deploymentu (rollback). Kubernetes przechowuje je domyślnie (`revisionHistoryLimit: 10`).
 - `secret/sh.helm.release.v1.bugtracker.v1` został po próbnej instalacji `helm install`. Argo CD nie używa Helma do instalacji (renderuje szablony), więc ten obiekt nie jest już używany.
@@ -196,10 +182,6 @@ $ kubectl -n bugtracker get sts bugtracker-postgres -o jsonpath='serviceName={.s
 serviceName=bugtracker-postgres-headless retention={"whenDeleted":"Retain","whenScaled":"Retain"}
 data-bugtracker-postgres-0
 ```
-
-![Zrzut: Deployment i StatefulSet](img/04-deployment-statefulset.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get deploy bugtracker -o wide` i `kubectl -n bugtracker get sts bugtracker-postgres -o wide`, z widocznym tagiem obrazu (SHA commitu) i digestem postgresa.
 
 Obraz aplikacji ma tag równy pełnemu SHA commitu, nie `latest`. Kyverno przy tworzeniu poda dopisał zweryfikowany digest:
 
@@ -243,11 +225,7 @@ X-Frame-Options: DENY
 
 ![Zrzut: Service, Ingress i odpowiedź /health](img/05-service-ingress.png)
 
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get svc -o wide` i `curl -i http://localhost/health`. Dodatkowo przeglądarka z otwartym `http://localhost` (strona logowania bugtrackera).
-
 ![Zrzut: aplikacja w przeglądarce](img/06-aplikacja-przegladarka.png)
-
-> Zrzut do wykonania: przeglądarka, `http://localhost`, lista zgłoszeń po zalogowaniu.
 
 ### 3.5. PVC i trwałość danych
 
@@ -258,10 +236,6 @@ data-bugtracker-postgres-0   Bound    pvc-a9664699-f49c-49bf-af6d-374023f214d6  
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
 pvc-a9664699-f49c-49bf-af6d-374023f214d6   1Gi        RWO            Delete           Bound    bugtracker/data-bugtracker-postgres-0   local-path     <unset>                          28m
 ```
-
-![Zrzut: PVC i PV](img/07-pvc.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get pvc -o wide` i `kubectl get pv`.
 
 Przejście bazy z Deploymentu na StatefulSet (2026-11-07) zrobiłem tak:
 1. kopia bazy (`pg_dump -Fc`, poza repozytorium),
@@ -338,10 +312,6 @@ BinaryData
 Events:  <none>
 ```
 
-![Zrzut: ConfigMap](img/08-configmap.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker describe configmap bugtracker-config`.
-
 ### 3.7. Secret (z SealedSecret)
 
 Wartości sekretów nie są wypisywane. `describe` pokazuje tylko nazwy kluczy i rozmiary.
@@ -363,10 +333,6 @@ Data
 db-password:  32 bytes
 secret-key:   64 bytes
 ```
-
-![Zrzut: SealedSecret i Secret](img/09-secret.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get sealedsecret` i `kubectl -n bugtracker describe secret bugtracker-secrets`. **Nie** rób zrzutu `kubectl get secret -o yaml`, bo pokazuje wartości zakodowane base64.
 
 ### 3.8. NetworkPolicy
 
@@ -396,10 +362,6 @@ Spec:
     <none> (Selected pods are isolated for egress connectivity)
   Policy Types: Ingress, Egress
 ```
-
-![Zrzut: NetworkPolicy](img/10-networkpolicy.png)
-
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n bugtracker get networkpolicy` i `kubectl -n bugtracker describe networkpolicy bugtracker-postgres`.
 
 ### 3.9. Requests i Limits, ResourceQuota, LimitRange
 
@@ -440,10 +402,6 @@ Container              memory    32Mi   1Gi  64Mi             256Mi          -
 PersistentVolumeClaim  storage   100Mi  2Gi  -                -              -
 ```
 
-![Zrzut: requests/limits, ResourceQuota i LimitRange](img/11-zasoby.png)
-
-> Zrzut do wykonania: terminal z wynikami trzech poleceń z tej sekcji.
-
 ResourceQuota jest dobrana do 2 podów aplikacji, 1 dodatkowego poda podczas rolling update i bazy, z zapasem. Zabrania usług `LoadBalancer` i `NodePort`, więc aplikacji nie da się wystawić z pominięciem Ingress.
 
 ### 3.10. Argo CD i Kyverno
@@ -457,7 +415,7 @@ bugtracker-sandbox   OutOfSync     Degraded
 
 ![Zrzut: Argo CD UI](img/12-argocd.png)
 
-> Zrzut do wykonania: (1) terminal z wynikiem `kubectl -n argocd get applications`; (2) interfejs Argo CD (`kubectl -n argocd port-forward svc/argocd-server 8080:443`, potem `https://localhost:8080`) z drzewem zasobów aplikacji `bugtracker`.
+![Zrzut: Argo CD, lista aplikacji](img/12b-argocd-aplikacje.png)
 
 Aplikacja `bugtracker` jest `Synced` i `Healthy`: stan klastra zgadza się z repozytoriami. Aplikacja `bugtracker-sandbox` (piaskownica, ręczna synchronizacja) jest `Degraded` celowo: Kyverno nie wpuszcza tam niepodpisanego obrazu (test T3).
 
@@ -474,11 +432,7 @@ $ kubectl -n bugtracker run test-limitrange --image=postgres:16.15-alpine@sha256
 Error from server (Forbidden): pods "test-limitrange" is forbidden: maximum cpu usage per Container is 1, but limit is 2
 ```
 
-**Wynik:** ✅ odrzucony przez LimitRange.
-
-![Zrzut: odrzucenie przez LimitRange](img/13-test-limitrange.png)
-
-> Zrzut do wykonania: terminal z poleceniem i komunikatem `maximum cpu usage per Container is 1, but limit is 2`. Pełna treść `--overrides` (pod zgodny z PSA `restricted`, `resources.limits.cpu: "2"`) jest opisana niżej.
+**Wynik:** odrzucony przez LimitRange.
 
 ### 4.2. LimitRange: wartości domyślne
 
@@ -489,11 +443,7 @@ $ kubectl -n bugtracker run test-defaults --image=postgres:16.15-alpine@sha256:7
 {"limits":{"cpu":"250m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}
 ```
 
-**Wynik:** ✅ serwer dopisał `requests 50m/64Mi` i `limits 250m/256Mi`.
-
-![Zrzut: domyślne zasoby z LimitRange](img/14-test-limitrange-default.png)
-
-> Zrzut do wykonania: terminal z poleceniem i wynikiem JSON z dopisanymi zasobami.
+**Wynik:** serwer dopisał `requests 50m/64Mi` i `limits 250m/256Mi`.
 
 ### 4.3. ResourceQuota: przekroczenie limitu namespace'u
 
@@ -504,18 +454,14 @@ $ kubectl -n bugtracker run test-quota --image=postgres:16.15-alpine@sha256:7218
 Error from server (Forbidden): pods "test-quota" is forbidden: exceeded quota: bugtracker-quota, requested: requests.cpu=900m, used: requests.cpu=200m, limited: requests.cpu=1
 ```
 
-**Wynik:** ✅ odrzucony przez ResourceQuota.
+**Wynik:** odrzucony przez ResourceQuota.
 
 ```console
 $ kubectl -n bugtracker create service loadbalancer test-lb --tcp=80:8000 --dry-run=server
 error: failed to create LoadBalancer service: services "test-lb" is forbidden: exceeded quota: bugtracker-quota, requested: services.loadbalancers=1,services.nodeports=1, used: services.loadbalancers=0,services.nodeports=0, limited: services.loadbalancers=0,services.nodeports=0
 ```
 
-**Wynik:** ✅ usługa `LoadBalancer` odrzucona (`services.loadbalancers: 0`).
-
-![Zrzut: odrzucenie przez ResourceQuota](img/15-test-quota.png)
-
-> Zrzut do wykonania: terminal z oboma komunikatami `exceeded quota: bugtracker-quota`.
+**Wynik:** usługa `LoadBalancer` odrzucona (`services.loadbalancers: 0`).
 
 ### 4.4. Pod Security Admission `restricted`
 
@@ -526,11 +472,7 @@ $ kubectl -n bugtracker run test-root --image=postgres:16.15-alpine@sha256:72187
 Error from server (Forbidden): pods "test-root" is forbidden: violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false (container "test-root" must set securityContext.allowPrivilegeEscalation=false), unrestricted capabilities (container "test-root" must set securityContext.capabilities.drop=["ALL"]), runAsNonRoot != true (pod or container "test-root" must set securityContext.runAsNonRoot=true), seccompProfile (pod or container "test-root" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
 ```
 
-**Wynik:** ✅ odrzucony przez PSA `restricted`.
-
-![Zrzut: odrzucenie przez Pod Security](img/16-test-psa.png)
-
-> Zrzut do wykonania: terminal z komunikatem `violates PodSecurity "restricted:latest"`.
+**Wynik:** odrzucony przez PSA `restricted`.
 
 ### 4.5. NetworkPolicy: dozwolony i zablokowany ruch
 
@@ -550,11 +492,7 @@ $ kubectl -n bugtracker exec bugtracker-postgres-0 -- sh -c 'timeout 3 nc -z -w 
 postgres -> internet ZABLOKOWANE (exit 1)
 ```
 
-**Wynik:** ✅ aplikacja → baza działa, aplikacja → internet i baza → internet są zablokowane. W k3s polityki egzekwuje kube-router: odrzucone połączenie kończy się `Connection refused` zamiast czekania do timeoutu.
-
-![Zrzut: test NetworkPolicy](img/17-test-networkpolicy.png)
-
-> Zrzut do wykonania: terminal z wynikami obu poleceń (`app -> postgres:5432 OK` oraz `ConnectionRefusedError` / `ZABLOKOWANE`).
+**Wynik:** aplikacja → baza działa, aplikacja → internet i baza → internet są zablokowane. W k3s polityki egzekwuje kube-router: odrzucone połączenie kończy się `Connection refused` zamiast czekania do timeoutu.
 
 ### 4.6. StatefulSet: stabilna nazwa DNS przez headless Service
 
@@ -565,11 +503,7 @@ $ kubectl -n bugtracker get pod bugtracker-postgres-0 -o jsonpath='{.status.podI
 10.42.0.78
 ```
 
-**Wynik:** ✅ nazwa `bugtracker-postgres-0.bugtracker-postgres-headless` wskazuje IP poda bazy.
-
-![Zrzut: DNS headless Service](img/18-test-headless.png)
-
-> Zrzut do wykonania: terminal z oboma poleceniami i tym samym adresem IP.
+**Wynik:** nazwa `bugtracker-postgres-0.bugtracker-postgres-headless` wskazuje IP poda bazy.
 
 ### 4.7. ServiceAccount bez uprawnień
 
@@ -582,11 +516,7 @@ no
 automountServiceAccountToken=false
 ```
 
-**Wynik:** ✅ brak uprawnień, token niemontowany.
-
-![Zrzut: kubectl auth can-i](img/19-test-serviceaccount.png)
-
-> Zrzut do wykonania: terminal z wynikami `kubectl auth can-i` (`no`, `no`) i `automountServiceAccountToken=false`.
+**Wynik:** brak uprawnień, token niemontowany.
 
 Pliki `--overrides` użyte w testach 4.1–4.3 (pod zgodny z PSA `restricted`, różniący się tylko polem `resources`):
 
@@ -601,57 +531,41 @@ Pliki `--overrides` użyte w testach 4.1–4.3 (pod zgodny z PSA `restricted`, r
 
 ## 5. Testy akceptacyjne T1–T5
 
-Testy zaplanowane w zadaniu cząstkowym nr 2 (dokumentacja techniczna projektu). Szczegółowy przebieg i dowody: [`docs/test-results.md`](test-results.md), wyniki skanerów: [`docs/scan-results.md`](scan-results.md).
+Wszystkie pięć testów zostało zaliczonych. Dokładniejszy opis jest w [`docs/test-results.md`](test-results.md), a wyniki skanerów w [`docs/scan-results.md`](scan-results.md).
 
-| Test | Cel | Wynik |
-|---|---|---|
-| T1 | Podatna biblioteka przerywa pipeline i jest raportowana | ✅ 2026-10-24 |
-| T2 | Raporty wszystkich skanerów (SARIF) w jednym panelu GitHub Security | ✅ 2026-10-24 |
-| T3 | Niepodpisany obraz odrzucony przez Kyverno | ✅ 2026-10-24, potwierdzony ponownie 2026-11-07 |
-| T4 | Nowy obraz trafia tylko na `development`, wdrożenie wymaga ręcznego PR | ✅ 2026-10-24 |
-| T5 | Sekret z `SealedSecret` odszyfrowany w klastrze, jawna wartość nigdzie nie wycieka | ✅ 2026-10-24 |
+### T1: blokada podatnej biblioteki
 
-### T1: Blokada i raportowanie podatności kodu (SAST/SCA)
+Wysłaliśmy gałąź `vuln/sca-deps` ze starą biblioteką `urllib3 1.22`, która ma krytyczną podatność CVE-2018-20060.
 
-- **Cel:** przestarzała biblioteka z krytyczną CVE (baza OSV.dev) przerywa pipeline, a w Security → Code scanning pojawia się raport wskazujący bibliotekę.
-- **Przebieg:** push gałęzi `vuln/sca-deps` (VULN-04: `urllib3==1.22` w `requirements.in` i lock files).
-- **Polecenia:**
-  ```bash
-  gh run list --branch vuln/sca-deps --limit 1
-  gh run view 40075903495
-  gh api 'repos/Krrystian/bugtracker-app/code-scanning/alerts?ref=refs/heads/vuln/sca-deps&tool_name=osv-scanner' --jq '.[0].rule.description'
-  ```
-- **Oczekiwany wynik:** job `SCA (OSV-Scanner)` czerwony, obraz nieopublikowany.
-- **Uzyskany wynik:** [przebieg 40075903495](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495): `SCA (OSV-Scanner)` ❌ (krok bramki), pozostałe joby ✅, `Push to Docker Hub` i `Notify GitOps repo` pominięte. W Code scanning 48 alertów osv-scanner, w tym **Critical CVE-2018-20060** („Package 'urllib3@1.22' is vulnerable…”). Na `main`: 0 alertów. ✅
+```bash
+gh run view 40075903495
+gh api 'repos/Krrystian/bugtracker-app/code-scanning/alerts?ref=refs/heads/vuln/sca-deps&tool_name=osv-scanner' --jq '.[0].rule.description'
+```
+
+OSV-Scanner zatrzymał pipeline ([przebieg](https://github.com/Krrystian/bugtracker-app/actions/runs/40075903495)), reszta jobów przeszła, a obraz nie trafił do Docker Hub. W zakładce Security pojawił się alert o `urllib3@1.22`.
 
 ![Zrzut: T1 przebieg CI](img/20-t1-ci.png)
 
-> Zrzut do wykonania: GitHub → Actions → przebieg 40075903495 (graf jobów z czerwonym `SCA (OSV-Scanner)`) oraz Security → Code scanning, filtr `branch:vuln/sca-deps tool:osv-scanner`, alert CVE-2018-20060.
+![Zrzut: alert CVE-2018-20060 w Code scanning](img/20b-t1-alert.png)
 
-### T2: Centralizacja raportów (SARIF)
+### T2: raporty w jednym miejscu
 
-- **Cel:** push `vuln/helm-privileged` (kontener jako root): Checkov generuje SARIF, a wyniki skanerów statycznych i DAST są widoczne we wspólnym panelu GitHub Security.
-- **Polecenia:**
-  ```bash
-  gh run view 40078615628
-  gh api 'repos/Krrystian/bugtracker-app/code-scanning/analyses?ref=refs/heads/main' --jq '[.[].tool.name] | unique'
-  ```
-- **Uzyskany wynik:** [przebieg 40078615628](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628): `IaC (Checkov)` ❌, SARIF wysłany (`if: always()`), alerty CKV_K8S_23 („Minimize the admission of root containers”) i CKV_K8S_16 („Container should not be privileged”). Panel Security dla `main` zawiera analizy: Semgrep OSS (SAST), osv-scanner (SCA), checkov (IaC), OWASP ZAP (DAST), a także Trivy, Gitleaks i Hadolint (stan 2026-11-07: 7 narzędzi). ✅
+Wysłaliśmy gałąź `vuln/helm-privileged`, w której kontener działa jako root.
+
+```bash
+gh run view 40078615628
+gh api 'repos/Krrystian/bugtracker-app/code-scanning/analyses?ref=refs/heads/main' --jq '[.[].tool.name] | unique'
+```
+
+Checkov zatrzymał pipeline ([przebieg](https://github.com/Krrystian/bugtracker-app/actions/runs/40078615628)) i wysłał raport z alertami, m.in. „Minimize the admission of root containers”. W zakładce Security są raporty wszystkich siedmiu skanerów: Semgrep, OSV-Scanner, Checkov, OWASP ZAP, Trivy, Gitleaks i Hadolint.
 
 ![Zrzut: T2 GitHub Security](img/21-t2-security.png)
 
-> Zrzut do wykonania: GitHub → Security → Code scanning z listą narzędzi (filtr „Tool”) oraz alert Checkov CKV_K8S_23 na gałęzi `vuln/helm-privileged`.
+![Zrzut: alert Checkov CKV_K8S_23](img/21b-t2-checkov.png)
 
-### T3: Integralność i weryfikacja podpisów Cosign
+### T3: blokada niepodpisanego obrazu
 
-- **Cel:** podmiana obrazu w `values.yaml` repo GitOps na losowy niepodpisany (`vuln/unsigned-image`, `nginx:1.27.3-alpine`), wdrożenie w piaskownicy: Kyverno blokuje pod z błędem braku podpisu.
-- **Polecenia** (stan aktualny, 2026-11-07):
-  ```bash
-  kubectl -n argocd get application bugtracker-sandbox
-  kubectl -n sandbox get events --field-selector reason=FailedCreate
-  kubectl -n sandbox get pods
-  ```
-- **Uzyskany wynik:**
+W repo GitOps na gałęzi `vuln/unsigned-image` podmieniliśmy obraz na `nginx:1.27.3-alpine`, który nie jest podpisany naszym kluczem, i wdrożyliśmy go w piaskownicy (namespace `sandbox`).
 
 ```console
 $ kubectl -n sandbox get events --field-selector reason=FailedCreate --sort-by=.lastTimestamp | tail -3; kubectl -n sandbox get pods
@@ -660,84 +574,72 @@ LAST SEEN   TYPE      REASON         OBJECT                             MESSAGE
 No resources found in sandbox namespace.
 ```
 
-Kyverno odrzuca każdą próbę utworzenia poda (`image is not signed with the project Cosign key (cosign.pub)`), w `sandbox` jest 0 podów. Środkowe zdarzenie (`no endpoints available for service "kyverno-svc"`) pochodzi z chwili startu klastra, gdy Kyverno jeszcze nie działał. Polityka ma `failurePolicy: Fail`, więc i wtedy pod nie powstał. Kontrola pozytywna: pody produkcyjne z podpisanym obrazem są przyjmowane (sekcja 3.3, digest dopisany przez Kyverno). ✅
+Kyverno nie pozwala utworzyć poda, więc w `sandbox` nie ma żadnego. Nasz podpisany obraz z `main` uruchamia się normalnie (sekcja 3.3).
 
 ![Zrzut: T3 odmowa Kyverno](img/22-t3-kyverno.png)
 
-> Zrzut do wykonania: terminal z wynikiem `kubectl -n sandbox get events --field-selector reason=FailedCreate` oraz Argo CD UI z aplikacją `bugtracker-sandbox` (komunikat błędu przy ReplicaSet).
+### T4: ręczne zatwierdzanie wdrożenia
 
-### T4: Brama wdrożeniowa
+```bash
+git -C bugtracker-gitops show origin/development:environments/development/values.yaml | grep tag:
+git -C bugtracker-gitops show origin/main:environments/development/values.yaml | grep tag:
+kubectl -n bugtracker get deploy bugtracker -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
 
-- **Cel:** po zielonym CI nowy tag obrazu trafia do repo GitOps tylko na gałąź `development`. Działająca aplikacja nie zmienia się do ręcznego scalenia `development` → `main`.
-- **Polecenia:**
-  ```bash
-  git -C bugtracker-gitops show origin/development:environments/development/values.yaml | grep tag:
-  git -C bugtracker-gitops show origin/main:environments/development/values.yaml | grep tag:
-  kubectl -n bugtracker get deploy bugtracker -o jsonpath='{.spec.template.spec.containers[0].image}'
-  ```
-- **Uzyskany wynik:** CI aplikacji ([40072560307](https://github.com/Krrystian/bugtracker-app/actions/runs/40072560307)) opublikował obraz `50c4eb5…` i wysłał `repository_dispatch`. Workflow GitOps ([40072686137](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40072686137)) zrobił commit `deploy: bugtracker 50c4eb5` **na `development`**. `main` GitOps i klaster pozostały przy poprzednim tagu `4945053…` do ręcznego PR. ✅
+Po scaleniu zmiany w repo aplikacji CI opublikowało obraz `50c4eb5` ([przebieg](https://github.com/Krrystian/bugtracker-app/actions/runs/40072560307)), a repo GitOps dostało commit z nowym tagiem tylko na gałęzi `development` ([przebieg](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40072686137)). Gałąź `main` repo GitOps i klaster zostały przy starej wersji, dopóki nie zrobiliśmy ręcznego PR.
 
 ![Zrzut: T4 gałęzie GitOps](img/23-t4-gitops.png)
 
-> Zrzut do wykonania: GitHub → bugtracker-gitops → porównanie `main...development` (różnica w `image.tag`) oraz lista commitów `development` z commitem `github-actions[bot]`.
+![Zrzut: commity github-actions[bot] na gałęzi development](img/23b-t4-commity.png)
 
-### T5: Szczelność sekretów
+### T5: szczelność sekretów
 
-- **Cel:** nowy sekret zaszyfrowany `kubeseal` jako `SealedSecret` w publicznym repo GitOps, wdrożenie: sekret odszyfrowany w klastrze, a jawne hasło nie pojawia się w logach ani w historii gita.
-- **Polecenia:**
-  ```bash
-  kubectl -n bugtracker get sealedsecret bugtracker-t5-demo
-  kubectl -n bugtracker get secret bugtracker-t5-demo -o jsonpath='{.metadata.ownerReferences[0].kind}'
-  # porównanie skrótu SHA-256 wartości w klastrze z oryginałem (wartość nie jest wypisywana)
-  ```
-- **Uzyskany wynik:** [bugtracker-gitops#6](https://github.com/Krrystian/bugtracker-gitops/pull/6): Gitleaks przepuścił szyfrogram, Argo CD wdrożył `SealedSecret`, kontroler utworzył `Secret` (właściciel: `SealedSecret`). SHA-256 wartości w klastrze jest zgodny z oryginałem. 0 wystąpień wartości (jawnie i w base64) w historii obu repozytoriów (wszystkie gałęzie), w logach Argo CD, kontrolera Sealed Secrets i CI. Dodatkowo `vuln/plaintext-secret` (jawny `Secret`) zatrzymany przez Gitleaks ([40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420)). ✅
+```bash
+kubectl -n bugtracker get sealedsecret bugtracker-t5-demo
+kubectl -n bugtracker get secret bugtracker-t5-demo -o jsonpath='{.metadata.ownerReferences[0].kind}'
+```
+
+Nowy sekret zaszyfrowaliśmy `kubeseal` i dodaliśmy do repo GitOps jako `SealedSecret` ([PR #6](https://github.com/Krrystian/bugtracker-gitops/pull/6)). Argo CD go wdrożył, a kontroler odszyfrował go w klastrze. Wartość w klastrze zgadza się z oryginałem (porównaliśmy skróty SHA-256). Jawnej wartości nie ma w historii git, w logach Argo CD, kontrolera ani CI. Gałąź `vuln/plaintext-secret` z jawnym hasłem została zatrzymana przez Gitleaks ([przebieg](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420)).
 
 ![Zrzut: T5 SealedSecret](img/24-t5-sealedsecret.png)
 
-> Zrzut do wykonania: plik `bugtracker-t5-demo.sealedsecret.yaml` w GitHubie (widoczny tylko szyfrogram) oraz terminal z `kubectl -n bugtracker get sealedsecret,secret`.
-
 ## 6. Gałęzie z podatnościami `vuln/*`
 
-`main` to wersja secure. Każda gałąź `vuln/*` psuje dokładnie jedną rzecz i ma zostać zatrzymana przez **jedną, zaplanowaną bramkę**. Te gałęzie nigdy nie są scalane do `main`. Opis każdej podatności: [`docs/vulnerabilities.md`](vulnerabilities.md).
+`main` to wersja bezpieczna. Każda gałąź `vuln/*` psuje jedną rzecz i powinien ją zatrzymać jeden konkretny skaner. Te gałęzie nigdy nie trafiają do `main`. Opis każdej podatności: [`docs/vulnerabilities.md`](vulnerabilities.md).
 
-| ID | Gałąź | Repo | Co psuje | Bramka | Ostatni przebieg |
-|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | sztuczny klucz API w kodzie | Secrets (Gitleaks) | ❌ tylko zaplanowana bramka, [42366696360](https://github.com/Krrystian/bugtracker-app/actions/runs/42366696360) |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | `latest`, root, brak przypięć | Dockerfile (Hadolint) | ❌ tylko zaplanowana bramka, [42366683545](https://github.com/Krrystian/bugtracker-app/actions/runs/42366683545) |
-| VULN-03 | `vuln/sast-code` | app | SQL injection, XSS, MD5 | SAST (Semgrep) | ❌ tylko zaplanowana bramka, [42366693206](https://github.com/Krrystian/bugtracker-app/actions/runs/42366693206) |
-| VULN-04 | `vuln/sca-deps` | app | `urllib3 1.22` (CVE-2018-20060) | SCA (OSV-Scanner), T1 | ❌ tylko zaplanowana bramka, [42366694277](https://github.com/Krrystian/bugtracker-app/actions/runs/42366694277) |
-| VULN-05 | `vuln/image-cve` | app | obraz bazowy z 2023 r. | Image (Trivy) | ❌ tylko zaplanowana bramka, [42366690816](https://github.com/Krrystian/bugtracker-app/actions/runs/42366690816) |
-| VULN-06 | `vuln/helm-privileged` | app | root, `privileged`, brak limitów | IaC (Checkov), T2 | ❌ tylko zaplanowana bramka, [42366689529](https://github.com/Krrystian/bugtracker-app/actions/runs/42366689529) |
-| VULN-07 | `vuln/helm-no-netpol` | app | brak NetworkPolicy | IaC (Checkov) | ❌ tylko zaplanowana bramka, [42366687528](https://github.com/Krrystian/bugtracker-app/actions/runs/42366687528) |
-| VULN-08 | `vuln/dast-runtime` | app | proxy usuwa nagłówki bezpieczeństwa | DAST (OWASP ZAP) | ❌ tylko zaplanowana bramka, [42366681769](https://github.com/Krrystian/bugtracker-app/actions/runs/42366681769) |
-| VULN-09 | `vuln/unsigned-image` | gitops | niepodpisany obraz w `values.yaml` | Kyverno (admission), T3 | piaskownica, sekcja T3 |
-| VULN-10 | `vuln/plaintext-secret` | gitops | jawny `Secret` zamiast `SealedSecret` | Secrets (Gitleaks) repo GitOps | ❌ tylko zaplanowana bramka, [42366699182](https://github.com/Krrystian/bugtracker-gitops/actions/runs/42366699182) |
-| VULN-11 | `vuln/helm-hostpath` | app | `hostPath` `/var/run/docker.sock` w podzie aplikacji | IaC (Checkov) | ❌ tylko zaplanowana bramka, [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999) |
+| Gałąź | Co psuje | Co ją zatrzymuje |
+|---|---|---|
+| `vuln/secret-leak` | klucz API w kodzie | Gitleaks |
+| `vuln/dockerfile-bad-practices` | `latest`, root, nieprzypięte pakiety | Hadolint |
+| `vuln/sast-code` | SQL injection, XSS, MD5 | Semgrep |
+| `vuln/sca-deps` | stara biblioteka `urllib3 1.22` | OSV-Scanner |
+| `vuln/image-cve` | obraz bazowy z 2023 r. | Trivy |
+| `vuln/helm-privileged` | root, `privileged`, brak limitów | Checkov |
+| `vuln/helm-no-netpol` | brak NetworkPolicy | Checkov |
+| `vuln/helm-hostpath` | dostęp do gniazda Dockera węzła | Checkov |
+| `vuln/dast-runtime` | proxy usuwa nagłówki bezpieczeństwa | OWASP ZAP |
+| `vuln/unsigned-image` (GitOps) | niepodpisany obraz | Kyverno |
+| `vuln/plaintext-secret` (GitOps) | jawne hasło zamiast `SealedSecret` | Gitleaks |
 
-Przebiegi z 2026-11-07, po aktualizacji gałęzi `vuln/*` do bieżącego `main` (wykres 0.2.0): w każdym czerwony jest wyłącznie job zaplanowanej bramki, a joby publikacji (`Push to Docker Hub`, `Notify GitOps repo`) są pominięte. Poprzednia, pełna macierz z 2026-10-24: [`docs/scan-results.md`](scan-results.md) i [`docs/test-results.md`](test-results.md).
+Na każdej gałęzi pada tylko ten jeden skaner, a obraz nie jest publikowany.
 
 ![Zrzut: przebiegi gałęzi vuln](img/25-vuln-runs.png)
 
-> Zrzut do wykonania: GitHub → Actions, lista przebiegów z filtrem gałęzi `vuln/*` (każdy z jednym czerwonym jobem) oraz jeden przebieg zielony na `main`.
+## 7. Podsumowanie
 
-## 7. Komentarz o funkcjonalności
+Udało się zrobić wszystko, co było założone:
+- aplikacja z bazą działa w Kubernetes (2 repliki aplikacji, PostgreSQL jako StatefulSet z trwałym wolumenem),
+- są wszystkie wymagane obiekty Kubernetes (sekcje 2–4),
+- zwykła konfiguracja jest w ConfigMap, a hasła w Secret tworzonym z SealedSecret,
+- ruch sieciowy jest domyślnie zablokowany, z wyjątkami tylko tam, gdzie trzeba,
+- każdy kontener ma limity zasobów, a namespace ma LimitRange i ResourceQuota,
+- wdrażanie idzie przez Argo CD i wymaga ręcznego PR,
+- 7 skanerów blokuje podatny kod, a obraz jest podpisywany i sprawdzany przez Kyverno,
+- hasła są w repo tylko w postaci zaszyfrowanej.
 
-**Zakładane i osiągnięte:**
-
-| Założenie | Stan |
-|---|---|
-| Aplikacja CRUD z bazą, uruchomiona w Kubernetesie | ✅ 2 repliki aplikacji, PostgreSQL jako StatefulSet z trwałym wolumenem |
-| Wszystkie wymagane obiekty K8s skonfigurowane i działające | ✅ sekcje 2–4 |
-| Konfiguracja jawna oddzielona od tajnej | ✅ ConfigMap (zmienne środowiskowe) i Secret z SealedSecret (pliki) |
-| Izolacja sieciowa | ✅ default-deny i jawne wyjątki (Ingress → aplikacja → baza, DNS) |
-| Kontrola zasobów | ✅ requests/limits w każdym kontenerze, LimitRange, ResourceQuota |
-| Wdrażanie przez GitOps z ręczną bramą | ✅ Argo CD, PR `development` → `main` (T4) |
-| Bezpieczeństwo łańcucha dostaw | ✅ 7 skanerów jako bramki (Semgrep, OSV-Scanner, Checkov, Gitleaks, Hadolint, Trivy, ZAP), SBOM, podpis Cosign, weryfikacja Kyverno (T1–T3) |
-| Sekrety poza repozytorium w jawnej postaci | ✅ Sealed Secrets (T5) |
-
-**Znane ograniczenia:**
-- **Cloudflare Quick Tunnel** (bez konta i domeny) dostaje nowy adres po każdym restarcie poda `cloudflared`. Webhook GitHub trzeba wtedy przestawić skryptem `scripts/update-webhook-url.sh`. Do tego czasu Argo CD synchronizuje się co 3 minuty (odpytywanie). Trwałe rozwiązanie to nazwany tunel z własną domeną.
-- **Tymczasowa aktualizacja `zlib` w Dockerfile:** w listopadzie 2026 opublikowano dwie podatności High w `zlib` (CVE-2026-76844, CVE-2026-85091). Obraz bazowy `python:3.12.16-slim-trixie` nie ma jeszcze poprawki, więc Dockerfile instaluje poprawioną wersję `zlib1g` (przypiętą). Do usunięcia, gdy obraz bazowy dostanie poprawkę.
-- **Jedna replika PostgreSQL:** StatefulSet zapewnia stałą tożsamość i trwały wolumen, ale nie wysoką dostępność. Restart bazy oznacza krótką przerwę. Replikacja (np. operator CloudNativePG) wykracza poza zakres projektu.
-- **Klaster jednowęzłowy (k3d) z `local-path`:** wolumen jest związany z węzłem. Na produkcji potrzebna byłaby sieciowa klasa pamięci i kopie zapasowe bazy.
-- **Kopia klucza kontrolera Sealed Secrets** musi być przechowywana poza klastrem. Bez niej po odtworzeniu klastra istniejących `SealedSecret` nie da się odszyfrować.
+Ograniczenia:
+- Cloudflare Quick Tunnel zmienia adres po każdym restarcie `cloudflared` i trzeba wtedy przestawić webhook (`scripts/update-webhook-url.sh`). Rozwiązaniem byłby nazwany tunel z własną domeną.
+- Dockerfile doinstalowuje poprawioną bibliotekę `zlib`, bo obraz bazowy jeszcze jej nie ma. Do usunięcia, gdy obraz bazowy ją dostanie.
+- Baza ma jedną replikę, więc jej restart oznacza krótką przerwę.
+- Klaster ma jeden węzeł, a dane leżą na jego dysku. Na produkcji potrzebny byłby dysk sieciowy i kopie zapasowe.
+- Klucz kontrolera Sealed Secrets trzeba trzymać poza klastrem, inaczej po odtworzeniu klastra nie da się odszyfrować sekretów.

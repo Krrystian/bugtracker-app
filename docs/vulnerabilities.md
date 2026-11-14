@@ -1,138 +1,86 @@
-# Rejestr podatności (branche `vuln/*`)
+# Podatności na gałęziach `vuln/*`
 
-Każda podatność istnieje **wyłącznie** na własnym, długo żyjącym branchu `vuln/<nazwa>`, który **nigdy nie jest scalany do `main`**. Każdy branch psuje dokładnie jedną rzecz i ma zostać zatrzymany przez **jedną, zaplanowaną bramkę**; pozostałe joby CI mają być zielone. W kodzie podatne miejsca są oznaczone komentarzem `VULN-XX`.
+Każda podatność jest na osobnej gałęzi `vuln/<nazwa>`, która nigdy nie trafia do `main`. Gałąź psuje jedną rzecz i powinien ją zatrzymać jeden konkretny skaner. W kodzie podatne miejsca mają komentarz `VULN-XX`.
 
-`main` = wersja secure (poprawka opisana w kolumnie „Poprawka w `main`”).
+| ID | Gałąź | Co ją zatrzymuje |
+|---|---|---|
+| VULN-01 | `vuln/secret-leak` | Gitleaks |
+| VULN-02 | `vuln/dockerfile-bad-practices` | Hadolint |
+| VULN-03 | `vuln/sast-code` | Semgrep |
+| VULN-04 | `vuln/sca-deps` | OSV-Scanner |
+| VULN-05 | `vuln/image-cve` | Trivy |
+| VULN-06 | `vuln/helm-privileged` | Checkov |
+| VULN-07 | `vuln/helm-no-netpol` | Checkov |
+| VULN-08 | `vuln/dast-runtime` | OWASP ZAP |
+| VULN-09 | `vuln/unsigned-image` (repo GitOps) | Kyverno w klastrze |
+| VULN-10 | `vuln/plaintext-secret` (repo GitOps) | Gitleaks w repo GitOps |
+| VULN-11 | `vuln/helm-hostpath` | Checkov |
 
-| ID | Branch | Repo | Kategoria OWASP | Bramka, która ma zatrzymać | Status |
-|---|---|---|---|---|---|
-| VULN-01 | `vuln/secret-leak` | app | A07:2021 Identification and Authentication Failures (CWE-798) | **Gitleaks** | ✅ zatrzymany przez Gitleaks |
-| VULN-02 | `vuln/dockerfile-bad-practices` | app | A05:2021 Security Misconfiguration | **Hadolint** | ✅ zatrzymany przez Hadolint |
-| VULN-03 | `vuln/sast-code` | app | A03:2021 Injection, A02:2021 Cryptographic Failures | **Semgrep (SAST)** | ✅ zatrzymany przez Semgrep |
-| VULN-04 | `vuln/sca-deps` | app | A06:2021 Vulnerable and Outdated Components | **OSV-Scanner (SCA)**, test T1 | ✅ zatrzymany przez OSV-Scanner |
-| VULN-05 | `vuln/image-cve` | app | A06:2021 Vulnerable and Outdated Components | **Trivy `image`** | ✅ zatrzymany przez Trivy |
-| VULN-06 | `vuln/helm-privileged` | app | A05:2021 Security Misconfiguration | **Checkov**, test T2 | ✅ zatrzymany przez Checkov |
-| VULN-07 | `vuln/helm-no-netpol` | app | A05:2021 Security Misconfiguration | **Checkov** / test w klastrze | ✅ zatrzymany przez Checkov |
-| VULN-08 | `vuln/dast-runtime` | app | A05:2021 Security Misconfiguration | **OWASP ZAP (DAST)** | ✅ zatrzymany przez OWASP ZAP |
-| VULN-09 | `vuln/unsigned-image` | gitops | A08:2021 Software and Data Integrity Failures | **Kyverno (admission)**, test T3 | ✅ zatrzymany przez Kyverno |
-| VULN-10 | `vuln/plaintext-secret` | gitops | A02:2021 Cryptographic Failures (CWE-312) | **Gitleaks na repo GitOps** | ✅ zatrzymany przez Gitleaks |
-| VULN-11 | `vuln/helm-hostpath` | app | A05:2021 Security Misconfiguration (CWE-250, CWE-552) | **Checkov** | ✅ zatrzymany przez Checkov |
+## VULN-01: klucz API w kodzie
 
----
+W `app/payments.py` wpisany jest na sztywno klucz API. Wartość jest losowa i nie działa nigdzie. Gitleaks wykrywa go jako `generic-api-key`.
 
-## VULN-03: podatny kod aplikacji (SAST)
-
-- **Branch:** `vuln/sast-code`
-- **Bramka:** job `SAST (Semgrep)`. Pozostałe joby (`Unit tests`, `Build image`) zielone.
-- **Co psujemy:** nowa strona wyszukiwania `/ui/search?q=...` w `app/web.py` i `app/templates/search.html`:
-
-| Podatność | CWE | Miejsce | Reguła Semgrep | Poziom |
-|---|---|---|---|---|
-| SQL injection: parametr `q` doklejany do surowego zapytania SQL (`text(...)`) | CWE-89 | `app/web.py` | `python.sqlalchemy.security.audit.avoid-sqlalchemy-text` | error (blokuje) |
-| XSS: wynik wyszukiwania renderowany z filtrem `\|safe` (bez escapowania HTML) | CWE-79 | `app/templates/search.html` | `jinja2-autoescape-disabled-in-template` (reguła projektu, `.semgrep/rules.yml`) | error (blokuje) |
-| Słaby hash: MD5 jako „odcisk” zapytania | CWE-327 | `app/web.py` | `python.lang.security.insecure-hash-algorithms-md5` | warning (raportowany) |
-
-- **Poprawka w `main`:**
-  - wszystkie zapytania przez ORM SQLAlchemy (`select(...)`, parametry wiązane), brak `text()` z danymi użytkownika,
-  - Jinja2 z `autoescape=True`, brak `|safe` i `Markup()` na danych użytkownika, dodatkowo ścisłe CSP (`default-src 'none'`),
-  - hasła hashowane Argon2id, brak MD5/SHA1 w kontekście bezpieczeństwa.
-
----
-
-## VULN-04: przestarzała biblioteka z krytyczną CVE (SCA)
-
-- **Branch:** `vuln/sca-deps`
-- **Bramka:** job `SCA (OSV-Scanner)`. Pozostałe joby zielone (test T1).
-- **Co psujemy:** do `requirements.in` (i lock file `requirements.txt`) dodany klient HTTP **`urllib3==1.22`** (2017 r.).
-- **Najważniejsza podatność:** [CVE-2018-20060](https://osv.dev/PYSEC-2018-32) / PYSEC-2018-32, **CVSS 9.8 (Critical)** — przy przekierowaniu na inny host urllib3 przekazuje dalej nagłówek `Authorization`, więc dane logowania mogą trafić do obcego serwera (CWE-200). Wersja ma też kilka podatności High (CVSS 8.9).
-- **Poprawka w `main`:** biblioteka nieużywana — nie występuje; wszystkie zależności (także przechodnie) przypięte w lock files i skanowane przy każdym PR. Gdyby była potrzebna: `urllib3>=2.x` (aktualna wersja bez znanych podatności).
-
----
-
-## VULN-06: wykres Helm z kontenerem root, `privileged` i bez limitów (IaC)
-
-- **Branch:** `vuln/helm-privileged`
-- **Bramka:** job `IaC (Checkov)`. Pozostałe joby zielone (test T2 — część statyczna).
-- **Co psujemy** (`charts/bugtracker/values.yaml`, wartości domyślne):
-  - `podSecurityContext`: `runAsNonRoot: false`, `runAsUser: 0` — kontenery jako root (CWE-250),
-  - `securityContext`: `privileged: true`, `allowPrivilegeEscalation: true`, `readOnlyRootFilesystem: false`, brak `capabilities.drop` (CWE-269),
-  - `app.resources: {}` — brak requests/limits (CWE-770).
-- **Wykrywa:** CKV_K8S_11, 13, 16, 20, 22, 23, 28, 31, 37, 40 (15 znalezisk High).
-- **Poprawka w `main`:** UID 10001 / 70, `runAsNonRoot: true`, `privileged` nieustawione, `allowPrivilegeEscalation: false`, read-only root FS, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, limity CPU/RAM; dodatkowo namespace z Pod Security `restricted` (taki pod nie zostałby przyjęty przez klaster).
-
-## VULN-07: wykres Helm bez NetworkPolicy (IaC)
-
-- **Branch:** `vuln/helm-no-netpol`
-- **Bramka:** job `IaC (Checkov)` (CKV2_K8S_6); dodatkowo weryfikacja w klastrze.
-- **Co psujemy:** `networkPolicy.enabled: false` — brak polityk default-deny; każdy pod w klastrze ma dostęp do bazy i aplikacji (z pominięciem Traefika), aplikacja ma nieograniczony ruch wychodzący (CWE-923).
-- **Poprawka w `main`:** `networkPolicy.enabled: true` — default-deny; aplikacja przyjmuje ruch tylko z Traefika, baza tylko z aplikacji, ruch wychodzący aplikacji tylko do bazy i DNS (zweryfikowane w k3d).
-
----
-
-## VULN-08: błędnie skonfigurowane reverse proxy (DAST)
-
-- **Branch:** `vuln/dast-runtime`
-- **Bramka:** job `DAST (OWASP ZAP)` (polityka `.zap/rules.tsv`). Pozostałe joby zielone — kod aplikacji się nie zmienia, więc Semgrep i testy jednostkowe nie mają czego wykryć; Checkov nie ocenia nagłówków HTTP.
-- **Co psujemy:** `charts/bugtracker/templates/proxy-headers.yaml` — middleware Traefika (`headers.customResponseHeaders`) podpięty do Ingress adnotacją `traefik.ingress.kubernetes.io/router.middlewares`:
-  - usuwa nagłówki ustawiane przez aplikację: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` (CWE-693, CWE-1021),
-  - ustawia `Server: uvicorn/0.54.0 (CPython 3.12.15; Debian 13)` — ujawnienie oprogramowania i wersji (CWE-497).
-- **Dlaczego to klasa DAST:** błąd istnieje wyłącznie w odpowiedziach działającego systemu (aplikacja nadal ustawia nagłówki — gubi je proxy przed nią); widać go tylko, wysyłając żądania HTTP.
-- **Wykrywa:** ZAP 10038, 10020, 10021, 10036 (`FAIL` w polityce).
-- **Poprawka w `main`:** brak middleware modyfikującego nagłówki; aplikacja ustawia CSP (`default-src 'none'; …`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; nagłówek `Server` bez wersji.
-
----
-
-## VULN-01: zakodowany na sztywno klucz API (sekrety)
-
-- **Branch:** `vuln/secret-leak`
-- **Bramka:** job `Secrets (Gitleaks)`. Pozostałe joby zielone.
-- **Co psujemy:** `app/payments.py` — `PAYMENT_API_KEY = "<losowe 48 znaków hex>"` (CWE-798). Wartość wygenerowana `openssl rand -hex 24` — **sztuczna, nie działa w żadnej usłudze**; nie była wypisywana w logach ani w dokumentacji.
-- **Wykrywa:** Gitleaks `generic-api-key` (oznaczony jako Critical przez `scripts/sarif-set-severity.py`).
-- **Poprawka w `main`:** brak sekretów w kodzie i historii; konfiguracja wyłącznie przez zmienne środowiskowe / pliki z `SECRETS_DIR` (Kubernetes Secret odtwarzany z SealedSecret), lokalnie `.env` w `.gitignore`.
-
----
+W `main` nie ma żadnych haseł ani kluczy w kodzie. Wszystko przychodzi ze zmiennych środowiskowych albo z sekretów Kubernetes.
 
 ## VULN-02: złe praktyki w Dockerfile
 
-- **Branch:** `vuln/dockerfile-bad-practices`
-- **Bramka:** job `Dockerfile (Hadolint)` (polityka `.hadolint.yaml`). `Build image` i joby zależne (SBOM, Trivy, DAST) są pominięte — obraz nie powstaje z Dockerfile, który nie przeszedł polityki. Semgrep pomija Dockerfile (`--exclude=Dockerfile`) — jeden problem, jedna bramka.
-- **Co psujemy:** `FROM python:latest` w obu etapach (DL3007), `apt-get install -y curl` bez wersji (DL3008), `pip install httpie` bez wersji (DL3013), `curl … | python -` bez `pipefail` (DL4006), `USER root` (DL3002).
-- **Poprawka w `main`:** obraz bazowy przypięty do wydania i digestu (`python:3.12.16-slim-trixie@sha256:…`), wszystkie zależności z lock file, brak dodatkowych narzędzi w obrazie, użytkownik `10001:10001`.
+Dockerfile używa `python:latest`, instaluje pakiety bez przypiętych wersji, uruchamia skrypt pobrany z internetu (`curl | python`) i działa jako root. Hadolint to blokuje, więc obraz w ogóle się nie buduje.
 
-## VULN-05: obraz bazowy z podatnymi pakietami systemu
+W `main` obraz bazowy jest przypięty do wersji i digestu, a kontener działa jako zwykły użytkownik (UID 10001).
 
-- **Branch:** `vuln/image-cve`
-- **Bramka:** job `Image (Trivy)`. Pozostałe joby zielone (obraz przypięty tagiem i digestem — Hadolint go akceptuje; aplikacja działa — DAST przechodzi).
-- **Co psujemy:** `ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6…` — obraz z października 2023, Debian 12 bez dwóch lat poprawek bezpieczeństwa.
-- **Wykrywa:** Trivy — m.in. CVE-2024-45491, CVE-2024-45492 (`expat`, Critical), łącznie 90 High/Critical z dostępną poprawką.
-- **Poprawka w `main`:** aktualny obraz bazowy (`python:3.12.16-slim-trixie`, Debian 13.7) przypięty digestem, poprawki bezpieczeństwa doinstalowane w Dockerfile; 0 CVE z dostępną poprawką.
+## VULN-03: podatny kod (SQL injection, XSS, MD5)
 
----
+Nowa strona wyszukiwania `/ui/search` ma trzy błędy:
+- parametr `q` jest doklejany do zapytania SQL (SQL injection),
+- wynik jest wyświetlany bez escapowania HTML (XSS),
+- zapytanie jest hashowane MD5 (słaby algorytm).
 
-## VULN-10: jawne hasło w repozytorium GitOps
+Semgrep blokuje dwa pierwsze, MD5 tylko zgłasza. W `main` zapytania idą przez ORM, szablony mają włączone escapowanie, a hasła są hashowane Argon2.
 
-- **Branch:** `vuln/plaintext-secret` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops)
-- **Bramka:** workflow `Gitleaks` repo GitOps (job `Secrets (Gitleaks)`, wymagany check `main`).
-- **Co psujemy:** `environments/development/secrets/db-admin.secret.yaml` — zwykły `Secret` ze `stringData` (losowe, nigdzie nieużywane hasło) zamiast `SealedSecret` (CWE-312, CWE-798).
-- **Wynik:** [przebieg 40099839420](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420) ❌, alert Critical `generic-api-key` w `db-admin.secret.yaml:11`. Plik nie trafił do klastra — Argo CD śledzi wyłącznie `main`.
-- **Poprawka w `main`:** wyłącznie `SealedSecret` (`*.sealedsecret.yaml`); `.gitleaks.toml` dopuszcza tylko szyfrogram Sealed Secrets w takich plikach — jawna wartość jest wykrywana wszędzie.
+## VULN-04: stara biblioteka z krytyczną podatnością
 
----
+Do zależności dodana jest biblioteka `urllib3==1.22` z 2017 roku. Ma podatność CVE-2018-20060 (Critical, 9.8): przy przekierowaniu na inny serwer wysyła dalej dane logowania. OSV-Scanner to wykrywa (test T1).
 
-## VULN-09: niepodpisany obraz w repozytorium GitOps (integralność)
+W `main` tej biblioteki nie ma, a wszystkie zależności są przypięte w plikach `requirements*.txt` i sprawdzane przy każdym PR.
 
-- **Branch:** `vuln/unsigned-image` w [bugtracker-gitops](https://github.com/Krrystian/bugtracker-gitops); wdrażany wyłącznie przez `Application bugtracker-sandbox` (namespace `sandbox`, ręczna synchronizacja, bez Ingress).
-- **Bramka:** Kyverno `ImageValidatingPolicy verify-bugtracker-images` (admission, `Deny`).
-- **Co psujemy:** `environments/development/values.yaml` — `image: docker.io/library/nginx:1.27.3-alpine` zamiast podpisanego `krys3x15/bugtracker` (CWE-494, CWE-345). Symuluje podmianę obrazu w GitOps (np. przez przejęte konto) na obraz spoza potoku CI.
-- **Wynik:** pod odrzucony — „image is not signed with the project Cosign key (cosign.pub)”; 0 podów w `sandbox` (test T3).
-- **Poprawka w `main`:** wyłącznie obrazy z potoku CI, podpisane po digeście kluczem projektu, z podpisaną atestacją SBOM; Kyverno wymusza to przy każdym tworzeniu poda.
+## VULN-05: stary obraz bazowy
 
----
+Obraz bazowy to `python:3.12.0-slim-bookworm` z 2023 roku, czyli Debian 12 bez dwóch lat poprawek. Trivy znajduje około 90 podatności High/Critical, które mają już poprawkę.
 
-## VULN-11: montowanie gniazda Dockera węzła (hostPath)
+W `main` jest aktualny obraz `python:3.12.16-slim-trixie`.
 
-- **Branch:** `vuln/helm-hostpath` (dodany przez członka zespołu 2026-11-05; szczegółowy opis: [`vuln-helm-hostpath.md`](vuln-helm-hostpath.md) na tym branchu)
-- **Bramka:** job `IaC (Checkov)`, reguła **CKV_K8S_27** („Do not expose the docker daemon socket to containers”), poziom error. DAST pominięty (zależy od Checkova), publikacja pominięta. Przebieg z 2026-11-07: [42366684999](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999).
-- **Co psujemy:** w `charts/bugtracker/templates/deployment.yaml` wolumen `hostPath: /var/run/docker.sock` zamontowany w kontenerze aplikacji. Proces z dostępem do gniazda może sterować demonem kontenerów węzła i uruchomić kontener uprzywilejowany, czyli uciec z kontenera (MITRE ATT&CK T1611).
-- **Kolejne warstwy obrony:** nawet z pominięciem Checkova pod zostałby odrzucony przez Pod Security Admission `restricted` w namespace `bugtracker` (zakaz wolumenów `hostPath`).
-- **Poprawka w `main`:** brak wolumenów `hostPath`; pod ma tylko `emptyDir` (`/tmp`) i Secret montowany tylko do odczytu.
+## VULN-06: kontener jako root i `privileged`
+
+W `values.yaml` wykresu Helm kontenery działają jako root, mają `privileged: true`, mogą podnosić uprawnienia i nie mają limitów CPU ani pamięci. Checkov zgłasza 15 problemów High (test T2).
+
+W `main` kontenery działają bez roota, z systemem plików tylko do odczytu, bez dodatkowych uprawnień i z limitami.
+
+## VULN-07: brak NetworkPolicy
+
+`networkPolicy.enabled: false`, więc każdy pod w klastrze może połączyć się z bazą i aplikacją. Checkov zgłasza brak NetworkPolicy.
+
+W `main` domyślnie wszystko jest zablokowane: aplikacja przyjmuje ruch tylko z Traefika, a baza tylko z aplikacji.
+
+## VULN-08: proxy usuwa nagłówki bezpieczeństwa
+
+Middleware Traefika usuwa nagłówki ustawiane przez aplikację (CSP, `X-Frame-Options`, `X-Content-Type-Options`) i dodaje nagłówek `Server` z wersją oprogramowania. W kodzie wszystko jest w porządku, błąd widać dopiero na działającej aplikacji, dlatego łapie go OWASP ZAP.
+
+W `main` tego middleware nie ma, a aplikacja ustawia wszystkie nagłówki sama.
+
+## VULN-09: niepodpisany obraz w repo GitOps
+
+W `values.yaml` repo GitOps zamiast naszego obrazu wpisany jest `nginx:1.27.3-alpine`. Symuluje to podmianę obrazu przez kogoś z zewnątrz. Gałąź jest wdrażana tylko w piaskownicy (namespace `sandbox`). Kyverno odrzuca pod z komunikatem „image is not signed with the project Cosign key” (test T3).
+
+W `main` wdrażane są tylko obrazy z CI podpisane kluczem projektu.
+
+## VULN-10: jawne hasło w repo GitOps
+
+Plik `db-admin.secret.yaml` to zwykły `Secret` z hasłem zapisanym jawnym tekstem (hasło jest losowe i nieużywane). Gitleaks w repo GitOps to wykrywa ([przebieg](https://github.com/Krrystian/bugtracker-gitops/actions/runs/40099839420)). Plik nie trafia do klastra, bo Argo CD wdraża tylko `main`.
+
+W `main` sekrety są tylko w postaci zaszyfrowanej (`SealedSecret`).
+
+## VULN-11: dostęp do gniazda Dockera
+
+Kontener aplikacji ma zamontowany `/var/run/docker.sock` z węzła. Kto przejmie aplikację, może sterować kontenerami na węźle i wydostać się z kontenera. Checkov blokuje to regułą CKV_K8S_27 ([przebieg](https://github.com/Krrystian/bugtracker-app/actions/runs/42366684999)). Nawet bez Checkova taki pod nie zostałby przyjęty w namespace `bugtracker`, bo Pod Security `restricted` zabrania `hostPath`.
+
+W `main` pod nie ma żadnych wolumenów z węzła.
